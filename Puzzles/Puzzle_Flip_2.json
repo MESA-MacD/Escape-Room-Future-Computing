@@ -4,7 +4,7 @@
   "mode": "find_inputs",
   "num_qubits": 1,
   "gates": [{"type": "X", "target": 0}],
-  "outputs": [1],
+  "outputs": [0],
   "hint": {
     "text": "The triangle is a flippy gate! It turns a black signal white and a white signal black!",
     "pulse_on_start": true,

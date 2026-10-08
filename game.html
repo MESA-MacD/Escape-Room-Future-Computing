@@ -20,7 +20,8 @@
     7. LOGIN SCREEN
     8. PUZZLE SCREEN
     9. VICTORY SCREEN
-   10. START
+   10. MOVING BACKGROUND  the drifting grid and the slower details beneath it
+   11. START
 -->
 <html>
 <head>
@@ -34,7 +35,7 @@
   /* ================= Colours and fonts used everywhere ================= */
   :root {
     --background: #0e1124;              /* deep night blue, must match BACKGROUND in app.py */
-    --grid: rgba(63, 243, 255, 0.05);   /* faint grid lines, like a computer screen */
+    --grid: rgba(63, 243, 255, 0.09);   /* grid lines (the script sets this from BACKGROUND_MOTION.gridOpacity) */
     --panel: #171b38;
     --text: #e8e9ff;
     --muted: #8d92c9;
@@ -50,10 +51,6 @@
     margin: 0; height: 100%; overflow: hidden;
     color: var(--text); font-family: var(--terminal-font);
     background-color: var(--background);
-    background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 40px 40px;
     user-select: none; -webkit-user-select: none;   /* no accidental text highlighting */
     -webkit-tap-highlight-color: transparent;       /* no grey flash on phone taps */
   }
@@ -62,7 +59,22 @@
   :focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 
   /* Only one screen shows at a time; the active one fades in */
-  .screen { position: fixed; inset: 0; display: none; flex-direction: column; }
+  /* MOVING BACKGROUND: two layers behind everything, drifting in the same
+     direction (see section 10 of the script, and BACKGROUND_MOTION).
+     The grid layer is one grid square bigger than the screen, so sliding it
+     by up to one square never shows an edge. */
+  .background-layer { position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none; }
+  #background-details { width: 100%; height: 100%; }        /* faint shapes, drawn by the script */
+  #background-grid {                                        /* the grid, on top of the details */
+    will-change: transform;
+    width: calc(100% + 40px); height: calc(100% + 40px);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .screen { position: fixed; inset: 0; z-index: 1; display: none; flex-direction: column; }
   .screen.active { display: flex; animation: fade-in 0.5s ease; }
   @keyframes fade-in { from { opacity: 0; } }
 
@@ -138,9 +150,11 @@
 
   /* ================= Puzzle screen ================= */
   #top-bar {
-    display: flex; align-items: center; gap: 16px;
+    display: flex; flex-direction: column; gap: 8px;     /* two lines, one above the other */
     padding: 10px 18px; font-family: var(--pixel-font); font-size: 13px;
   }
+  #counter-row { display: flex; align-items: center; gap: 16px; }   /* line 1: counter + progress bars */
+  #timer { font-size: 11px; color: var(--muted); }                   /* line 2: the timer */
   #counter { white-space: nowrap; }
   #counter-current { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
   #progress { display: flex; gap: 6px; flex: 1; }     /* one bar per puzzle */
@@ -183,12 +197,11 @@
   @keyframes breathe { from { fill: rgba(255, 255, 255, 0.04); } to { fill: rgba(255, 79, 216, 0.22); } }
   @keyframes bob { 50% { transform: translateY(-6px); } }
 
-  /* Bottom bar: hint button on the left, timer on the right */
+  /* Bottom bar: hint button on the left */
   #bottom-bar {
     display: flex; align-items: center; min-height: 52px;
     padding: 4px 18px 10px; font-family: var(--pixel-font); font-size: 13px;
   }
-  #timer { margin-left: auto; color: var(--muted); }   /* margin-left: auto pushes it to the right */
 
   /* HINT BUTTON: a circled question mark */
   #hint-button {
@@ -266,6 +279,10 @@
 </head>
 <body>
 
+  <!-- Moving background: details first (bottom), then the grid -->
+  <canvas id="background-details" class="background-layer"></canvas>
+  <div id="background-grid" class="background-layer"></div>
+
   <!-- ===================== LOGIN SCREEN ===================== -->
   <section id="login" class="screen">
     <div class="status-bar">
@@ -280,7 +297,7 @@
           <polygon points="38,30 38,70 68,50" fill="#ffd23f"/>
         </svg>
       </div>
-      <div class="user-name">User: ??? Password: 12345</div>
+      <div class="user-name">User: ????? Password: 12345</div>
       <div class="password-row">
         <input id="password" type="password" placeholder="Password" autocomplete="off" aria-label="Password">
         <button id="login-button" aria-label="Log in">➜</button>
@@ -293,8 +310,11 @@
   <!-- ===================== PUZZLE SCREEN ===================== -->
   <section id="game" class="screen">
     <div id="top-bar">
-      <div id="counter">Puzzle <span id="counter-current">1</span> / <span id="counter-total">1</span></div>
-      <div id="progress"></div>
+      <div id="counter-row">
+        <div id="counter">Puzzle <span id="counter-current">1</span> / <span id="counter-total">1</span></div>
+        <div id="progress"></div>
+      </div>
+      <div id="timer">00:00</div>
     </div>
     <div id="play">
       <div id="stage"></div>
@@ -302,7 +322,6 @@
     </div>
     <div id="bottom-bar">
       <button id="hint-button" aria-label="Show hint" aria-expanded="false" hidden>?</button>
-      <div id="timer">00:00</div>
     </div>
     <div id="hint-panel" role="dialog" aria-label="Hint" hidden></div>
     <div id="banner"></div>
@@ -363,6 +382,27 @@ const TIMING = Object.assign(
   },
   /*TIMING*/{}
 );
+
+// The moving background. Speeds are in pixels per second. The direction
+// is picked at random each time the page opens.
+//
+// Each faint background shape gets a random "closeness" between 0 and 1.
+// Close shapes are bigger, brighter and faster; far ones are smaller,
+// dimmer and slower, which gives a feeling of depth.
+const BACKGROUND_MOTION = {
+  gridSpeed: 14,             // the grid
+  gridSize: 40,              // must match background-size of #background-grid in the CSS
+  gridOpacity: 0.09,         // how visible the grid lines are (0 = invisible, 1 = solid)
+
+  detailBrightest: 0.8,      // the closest shapes, as a fraction of the grid's brightness.
+                             // Keep this below 1 so shapes are always dimmer than the grid.
+  detailDimmest: 0.15,       // the furthest shapes, same scale
+  detailSpeedFastest: 10,    // closest shapes (keep below gridSpeed: the grid is on top)
+  detailSpeedSlowest: 2,     // furthest shapes
+  detailSizeBiggest: 1.8,    // closest shapes, as a multiple of normal size
+  detailSizeSmallest: 0.45,  // furthest shapes
+  detailsPerScreen: 60,      // roughly how many shapes on a phone-sized screen
+};
 
 // Colours. White is 1, black is 0. A superposition ("S") is drawn with
 // black-and-white stripes, defined in the drawing section below.
@@ -919,7 +959,7 @@ function updateCounter(index) {
   });
 }
 
-// The escape room timer in the bottom right corner
+// The escape room timer, under the puzzle counter
 function updateTimer() {
   if (progress.startedAt && !progress.finishedAt) {
     document.getElementById("timer").textContent = formatTime(Date.now() - progress.startedAt);
@@ -1094,8 +1134,148 @@ document.getElementById("play-again").addEventListener("click", () => {
 
 
 // =====================================================================
-// 10. START
+// 10. MOVING BACKGROUND
+// The grid is a repeating CSS pattern that we slide. The faint shapes are
+// drawn on a canvas, each moving at its own speed depending on how close
+// it is, and wrapping round to the other side when it drifts off screen.
 // =====================================================================
+
+// Remainder that's always positive, e.g. wrap(-5, 40) = 35
+const wrap = (value, size) => ((value % size) + size) % size;
+
+// How to draw each kind of shape, centred on (0, 0) at normal size.
+// "ctx" is the canvas drawing tool; each function draws one outline.
+const DETAIL_SHAPES = [
+  function octagon(ctx) {
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const a = (22.5 + 45 * k) * Math.PI / 180;
+      ctx.lineTo(9 * Math.cos(a), 9 * Math.sin(a));
+    }
+    ctx.closePath(); ctx.stroke();
+  },
+  function triangle(ctx) {
+    ctx.beginPath(); ctx.moveTo(-7, -9); ctx.lineTo(-7, 9); ctx.lineTo(9, 0); ctx.closePath(); ctx.stroke();
+  },
+  function gem(ctx) {
+    ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(6, -8); ctx.lineTo(10, -3); ctx.lineTo(0, 9); ctx.lineTo(-10, -3);
+    ctx.closePath(); ctx.stroke();
+  },
+  function zero(ctx) { ctx.fillText("0", 0, 0); },
+  function one(ctx) { ctx.fillText("1", 0, 0); },
+  function sparkle(ctx) {
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.moveTo(0, -6); ctx.lineTo(0, 6); ctx.stroke();
+  },
+  function dot(ctx) { ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, 2 * Math.PI); ctx.fill(); },
+  function wireArrow(ctx) {
+    ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(4, 0); ctx.moveTo(4, -4); ctx.lineTo(9, 0); ctx.lineTo(4, 4); ctx.stroke();
+  },
+];
+
+function startBackground() {
+  const settings = BACKGROUND_MOTION;
+  const grid = document.getElementById("background-grid");
+  const canvas = document.getElementById("background-details");
+  const ctx = canvas.getContext("2d");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // The grid's brightness comes from the settings, so the shapes can be
+  // kept dimmer than it
+  document.documentElement.style.setProperty("--grid", `rgba(63, 243, 255, ${settings.gridOpacity})`);
+
+  // A random direction, as an x and y step
+  const angle = Math.random() * 2 * Math.PI;
+  const stepX = Math.cos(angle), stepY = Math.sin(angle);
+
+  // Shapes live on an area slightly bigger than the screen, so they can
+  // drift fully off one edge before reappearing at the other
+  const margin = 40;
+  let width = 0, height = 0, shapes = [];
+
+  // Size the canvas to the screen, and scatter a fresh set of shapes
+  function setUp() {
+    const pixelRatio = window.devicePixelRatio || 1;    // sharp on high-resolution phones
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width * pixelRatio;
+    canvas.height = height * pixelRatio;
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+    // More shapes on bigger screens (a phone in landscape is about 844 x 390)
+    const count = Math.min(200, Math.round(settings.detailsPerScreen * (width * height) / (844 * 390)));
+    const colours = [COLOUR.cyan, COLOUR.pink, "#ffffff"];
+    const between = (low, high, amount) => low + (high - low) * amount;
+
+    shapes = Array.from({ length: count }, () => {
+      // Closeness from 0 (far) to 1 (near). Raising a random number to a
+      // power makes far shapes more common than near ones, like real stars.
+      const closeness = Math.random() ** 1.6;
+      return {
+        draw: DETAIL_SHAPES[Math.floor(Math.random() * DETAIL_SHAPES.length)],
+        colour: colours[Math.floor(Math.random() * colours.length)],
+        startX: Math.random() * (width + 2 * margin),
+        startY: Math.random() * (height + 2 * margin),
+        size: between(settings.detailSizeSmallest, settings.detailSizeBiggest, closeness),
+        speed: between(settings.detailSpeedSlowest, settings.detailSpeedFastest, closeness),
+        // Brightness as a fraction of the grid's, then turned into opacity
+        opacity: settings.gridOpacity * between(settings.detailDimmest, settings.detailBrightest, closeness),
+      };
+    });
+    // Draw far shapes first, so near ones sit on top of them
+    shapes.sort((a, b) => a.size - b.size);
+  }
+
+  // Draw every shape at its position after "seconds" of drifting
+  function drawShapes(seconds) {
+    ctx.clearRect(0, 0, width, height);
+    ctx.font = "15px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    for (const shape of shapes) {
+      const distance = seconds * shape.speed;
+      const x = wrap(shape.startX + distance * stepX, width + 2 * margin) - margin;
+      const y = wrap(shape.startY + distance * stepY, height + 2 * margin) - margin;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(shape.size, shape.size);
+      ctx.globalAlpha = shape.opacity;
+      ctx.strokeStyle = ctx.fillStyle = shape.colour;
+      ctx.lineWidth = 2;
+      shape.draw(ctx);
+      ctx.restore();
+    }
+  }
+
+  // Slide the grid by "distance" pixels. Moving a repeating pattern by a
+  // whole square looks exactly the same, so we only move it by the
+  // remainder, which keeps the grid layer always covering the screen.
+  function slideGrid(distance) {
+    const x = wrap(distance * stepX, settings.gridSize) - settings.gridSize;
+    const y = wrap(distance * stepY, settings.gridSize) - settings.gridSize;
+    grid.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  }
+
+  setUp();
+  window.addEventListener("resize", () => { setUp(); if (still) drawShapes(0); });
+
+  if (still) { drawShapes(0); return; }   // reduced motion: draw once, don't move
+
+  const start = performance.now();
+  function frame(now) {
+    const seconds = (now - start) / 1000;
+    slideGrid(seconds * settings.gridSpeed);
+    drawShapes(seconds);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+
+// =====================================================================
+// 11. START
+// =====================================================================
+startBackground();
 updateClock();
 setInterval(updateClock, 10_000);
 setInterval(updateTimer, 500);

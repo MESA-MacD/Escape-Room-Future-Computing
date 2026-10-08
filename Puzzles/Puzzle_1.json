@@ -1,8 +1,0 @@
-{
-  "id": "Simple",
-  "level": 1,
-  "mode": "find_inputs",
-  "num_qubits": 1,
-  "gates": [],
-  "outputs": [0]
-}

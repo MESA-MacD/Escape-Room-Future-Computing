@@ -1,8 +1,0 @@
-{
-  "id": "Flip",
-  "level": 2,
-  "mode": "find_inputs",
-  "num_qubits": 1,
-  "gates": [{"type": "X", "target": 0}],
-  "outputs": [1]
-}

@@ -1,8 +1,0 @@
-{
-  "id": "Control Gate",
-  "level": 3,
-  "mode": "find_inputs",
-  "num_qubits": 2,
-  "gates": [{"type": "CNOT", "target": 0, "control":  1}],
-  "outputs": [1, 0]
-}

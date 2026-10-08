@@ -147,10 +147,8 @@
   .progress-step { width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); }
   .progress-step.done { background: var(--win); box-shadow: 0 0 6px var(--win); }
   .progress-step.current { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
-  #timer { color: var(--muted); }
-
   /* Circuit on the left, big Confirm button on the right */
-  #play { flex: 1; min-height: 0; display: flex; align-items: center; gap: 16px; padding: 0 20px 16px; }
+  #play { flex: 1; min-height: 0; display: flex; align-items: center; gap: 16px; padding: 0 20px; }
   #stage { flex: 1; height: 100%; min-width: 0; }
   #stage svg { width: 100%; height: 100%; display: block; }
 
@@ -169,10 +167,61 @@
   #confirm:active:not(:disabled) { transform: translateY(3px) scale(0.97); }
   #confirm:disabled { background: #232748; color: #5a6090; box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.25); }
 
-  /* Input squares are clickable */
-  .input-box { cursor: pointer; }
+  /* INPUT SQUARES: make it obvious they can be tapped.
+     While a square still shows "?", its dashed border marches round
+     ("marching ants"), its inside gently glows pink, and the "?" bobs. */
+  .input-box { cursor: pointer; transform-box: fill-box; transform-origin: center; transition: transform 0.1s; }
   .input-box:hover rect { stroke-width: 6; }
-  .input-box:focus:not(:focus-visible) { outline: none; }   /* no ring after a tap, only for keyboard users */
+  .input-box:active { transform: scale(0.92); }               /* squashes when pressed */
+  .input-box:focus:not(:focus-visible) { outline: none; }     /* no ring after a tap, only for keyboard users */
+  .input-box.unknown rect {
+    stroke: #ff9be8;
+    animation: march 0.9s linear infinite, breathe 1.4s ease-in-out infinite alternate;
+  }
+  .input-box.unknown text { animation: bob 1.4s ease-in-out infinite; transform-box: fill-box; }
+  @keyframes march { to { stroke-dashoffset: -34; } }          /* 34 = two dash patterns of 10 + 7 */
+  @keyframes breathe { from { fill: rgba(255, 255, 255, 0.04); } to { fill: rgba(255, 79, 216, 0.22); } }
+  @keyframes bob { 50% { transform: translateY(-6px); } }
+
+  /* Bottom bar: hint button on the left, timer on the right */
+  #bottom-bar {
+    display: flex; align-items: center; min-height: 52px;
+    padding: 4px 18px 10px; font-family: var(--pixel-font); font-size: 13px;
+  }
+  #timer { margin-left: auto; color: var(--muted); }   /* margin-left: auto pushes it to the right */
+
+  /* HINT BUTTON: a circled question mark */
+  #hint-button {
+    width: 44px; height: 44px; padding: 0 0 0 3px; border-radius: 50%;
+    font-family: var(--pixel-font); font-size: 18px; color: var(--cyan);
+    background: rgba(63, 243, 255, 0.08); border: 3px solid var(--cyan);
+    box-shadow: 0 0 10px rgba(63, 243, 255, 0.4); text-shadow: 0 0 8px var(--cyan);
+    opacity: 0.75; transition: opacity 0.2s, transform 0.1s;
+  }
+  #hint-button:hover, #hint-button[aria-expanded="true"] { opacity: 1; }
+  #hint-button:active { transform: scale(0.92); }
+  /* Attention mode: cycles between dim and bright (switched on from the puzzle's JSON file) */
+  #hint-button.attention { animation: attention 0.9s ease-in-out infinite alternate; }
+  @keyframes attention {
+    from { opacity: 0.3; }
+    to { opacity: 1; transform: scale(1.12); box-shadow: 0 0 22px var(--cyan), 0 0 44px rgba(63, 243, 255, 0.5); }
+  }
+
+  /* HINT BUBBLE: pops up above the hint button */
+  #hint-panel {
+    position: fixed; left: 18px; bottom: 72px; z-index: 15;
+    max-width: min(440px, 70vw); padding: 12px 18px;
+    font-size: 24px; line-height: 1.2;
+    background: var(--panel); border: 2px solid var(--cyan); border-radius: 12px;
+    box-shadow: 0 0 24px rgba(63, 243, 255, 0.35);
+    animation: pop-up 0.2s ease-out;
+  }
+  #hint-panel::after {   /* little pointer aiming at the button */
+    content: ""; position: absolute; left: 12px; bottom: -10px; width: 16px; height: 16px;
+    background: var(--panel); border-right: 2px solid var(--cyan); border-bottom: 2px solid var(--cyan);
+    transform: rotate(45deg);
+  }
+  @keyframes pop-up { from { opacity: 0; transform: translateY(8px); } }
 
   /* "Puzzle 2 / 4" flashes up when a puzzle starts */
   #banner {
@@ -208,7 +257,10 @@
   #play-again { background: none; font-size: 22px; color: var(--muted); text-decoration: underline; }
 
   @media (prefers-reduced-motion: reduce) {
-    .screen.active, #confirm.ready, .shake, #game.screen-shake { animation: none; }
+    .screen.active, #confirm.ready, .shake, #game.screen-shake,
+    .input-box.unknown rect, .input-box.unknown text, #hint-panel { animation: none; }
+    /* hint attention mode without movement: just stay bright */
+    #hint-button.attention { animation: none; opacity: 1; box-shadow: 0 0 22px var(--cyan); }
   }
 </style>
 </head>
@@ -228,7 +280,7 @@
           <polygon points="38,30 38,70 68,50" fill="#ffd23f"/>
         </svg>
       </div>
-      <div class="user-name">Minnie Rahl. Password: 12345</div>
+      <div class="user-name">User: ??? Password: 12345</div>
       <div class="password-row">
         <input id="password" type="password" placeholder="Password" autocomplete="off" aria-label="Password">
         <button id="login-button" aria-label="Log in">➜</button>
@@ -243,12 +295,16 @@
     <div id="top-bar">
       <div id="counter">Puzzle <span id="counter-current">1</span> / <span id="counter-total">1</span></div>
       <div id="progress"></div>
-      <div id="timer">00:00</div>
     </div>
     <div id="play">
       <div id="stage"></div>
       <button id="confirm" disabled>Confirm</button>
     </div>
+    <div id="bottom-bar">
+      <button id="hint-button" aria-label="Show hint" aria-expanded="false" hidden>?</button>
+      <div id="timer">00:00</div>
+    </div>
+    <div id="hint-panel" role="dialog" aria-label="Hint" hidden></div>
     <div id="banner"></div>
   </section>
 
@@ -592,7 +648,8 @@ function drawBoard(puzzle) {
 function drawInputBox(parent, q) {
   const y = wireY(q), size = LAYOUT.box;
   const group = draw("g", {
-    class: "input-box", role: "button", tabindex: 0, "aria-label": `Input for qubit ${q + 1}`,
+    class: "input-box unknown",   // "unknown" = still showing "?", so it animates
+    role: "button", tabindex: 0, "aria-label": `Input for qubit ${q + 1}`,
   }, parent);
   const square = draw("rect", {
     x: LAYOUT.inputX, y: y - size / 2, width: size, height: size,
@@ -610,7 +667,7 @@ function drawInputBox(parent, q) {
   group.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flipInput(q); }
   });
-  return { square, questionMark };
+  return { group, square, questionMark };
 }
 
 // A goal square: white (1), black (0) or split diagonally (superposition)
@@ -796,7 +853,7 @@ function tryPassword() {
     login.input.disabled = true;
     login.button.disabled = true;
     login.message.className = "welcome";
-    login.message.textContent = "Welcome, Professor Minnie Rahl...";
+    login.message.textContent = "Welcome, agent...";
     setTimeout(() => {
       progress = { loggedIn: true, puzzle: 0, startedAt: Date.now(), finishedAt: null };
       saveProgress();
@@ -841,6 +898,7 @@ function startPuzzle(index) {
   game.board = drawBoard(puzzle);
   updateCounter(index);
   updateConfirmButton();
+  setUpHint(puzzle);
 
   // Flash "Puzzle 2 / 4" across the screen
   const banner = document.getElementById("banner");
@@ -861,7 +919,7 @@ function updateCounter(index) {
   });
 }
 
-// The escape room timer in the top right corner
+// The escape room timer in the bottom right corner
 function updateTimer() {
   if (progress.startedAt && !progress.finishedAt) {
     document.getElementById("timer").textContent = formatTime(Date.now() - progress.startedAt);
@@ -881,7 +939,8 @@ function flipInput(q) {
   if (game.hasRun) clearAnimation();   // changing an answer starts a fresh try
   game.inputs[q] = game.inputs[q] === 0 ? 1 : 0;
 
-  const { square, questionMark } = game.board.inputBoxes[q];
+  const { group, square, questionMark } = game.board.inputBoxes[q];
+  group.classList.remove("unknown");   // stop the "tap me" animation
   square.setAttribute("fill", game.inputs[q] === 1 ? COLOUR.one : COLOUR.zero);
   questionMark.style.display = "none";
   updateConfirmButton();
@@ -917,6 +976,7 @@ async function runCircuit() {
   } else {
     // Flash red and shake, then let them change the inputs and try again
     flashScreen("lose");
+    if (hintOf(puzzle)?.pulse_on_fail) drawAttentionToHint();
     game.busy = false;
     updateConfirmButton();
   }
@@ -949,6 +1009,64 @@ function goToNextPuzzle() {
 }
 
 confirmButton.addEventListener("click", runCircuit);
+
+
+// --- Hints ----------------------------------------------------------
+// In a puzzle's JSON file, "hint" can be either just the text:
+//     "hint": "Start with the bottom wire."
+// or the text plus attention settings (both optional, false if left out):
+//     "hint": {
+//       "text": "Start with the bottom wire.",
+//       "pulse_on_start": true,    <- hint button blinks when the puzzle starts
+//       "pulse_on_fail": true      <- hint button blinks after a wrong answer
+//     }
+// The blinking stops as soon as the hint is opened.
+const hintButton = document.getElementById("hint-button");
+const hintPanel = document.getElementById("hint-panel");
+
+// Read a puzzle's hint in either form. Returns null if it has none.
+function hintOf(puzzle) {
+  const hint = puzzle.hint;
+  if (!hint) return null;
+  if (typeof hint === "string") return { text: hint, pulse_on_start: false, pulse_on_fail: false };
+  return hint;
+}
+
+// Called when each puzzle starts: show the button only if there's a hint
+function setUpHint(puzzle) {
+  const hint = hintOf(puzzle);
+  closeHint();
+  hintButton.hidden = !hint;
+  hintPanel.textContent = hint ? hint.text : "";
+  hintButton.classList.toggle("attention", Boolean(hint && hint.pulse_on_start));
+}
+
+// Start the dim-bright blinking (unless the hint is already open)
+function drawAttentionToHint() {
+  if (hintPanel.hidden) hintButton.classList.add("attention");
+}
+
+function openHint() {
+  hintPanel.hidden = false;
+  hintButton.setAttribute("aria-expanded", "true");
+  hintButton.classList.remove("attention");   // they've seen it: stop blinking
+}
+
+function closeHint() {
+  hintPanel.hidden = true;
+  hintButton.setAttribute("aria-expanded", "false");
+}
+
+// The button opens and closes the hint
+hintButton.addEventListener("click", event => {
+  event.stopPropagation();                    // don't let the click below close it again
+  hintPanel.hidden ? openHint() : closeHint();
+});
+// Tapping anywhere else, or pressing Escape, closes it
+document.addEventListener("click", event => {
+  if (!hintPanel.hidden && !hintPanel.contains(event.target)) closeHint();
+});
+document.addEventListener("keydown", event => { if (event.key === "Escape") closeHint(); });
 
 
 // =====================================================================

@@ -41,8 +41,17 @@ WRITING A PUZZLE FILE
         {"type": "CNOT", "control": 2, "target": 1},
         {"type": "CNOT", "control": 1, "target": 0}
       ],
-      "outputs": [1, 0, 0]        the goal for each wire: 1, 0 or "S"
+      "outputs": [1, 0, 0],       the goal for each wire: 1, 0 or "S"
+      "hint": {                   optional: a hint behind the circled ? button
+        "text": "Start with the bottom wire.",
+        "pulse_on_start": true,   optional: hint button blinks when the puzzle starts
+        "pulse_on_fail": true     optional: hint button blinks after a wrong answer
+      }
     }
+
+    A hint can also be just text, with no blinking:  "hint": "Start with the bottom wire."
+    Leave "hint" out completely and the hint button is hidden for that puzzle.
+    The blinking stops as soon as the player opens the hint.
 
     Signals:  1 = white,  0 = black,  "S" = superposition (half white, half black)
 
@@ -69,7 +78,19 @@ import streamlit.components.v1 as components
 # File locations (relative to this file, so it works locally AND when hosted)
 # ---------------------------------------------------------------------------
 HERE = Path(__file__).parent
-PUZZLE_DIR = HERE / "puzzles"
+
+
+def find_puzzle_folder():
+    """The puzzle folder can be called "puzzles" or "Puzzles". Streamlit's
+    servers care about capital letters even though Windows and macOS don't,
+    so we look for either rather than relying on the exact spelling."""
+    for path in HERE.iterdir():
+        if path.is_dir() and path.name.lower() == "puzzles":
+            return path
+    return HERE / "puzzles"
+
+
+PUZZLE_DIR = find_puzzle_folder()
 GAME_PAGE = HERE / "game.html"
 SETTINGS_FILE = HERE / "escape_room.json"
 
@@ -87,8 +108,8 @@ ANIMATION_SPEED = 1.0
 # Fine-tuning, in seconds. Only "wire" and "gate" are affected by
 # ANIMATION_SPEED; the two pauses always last exactly as long as set here.
 ANIMATION_SECONDS = {
-    "wire": 1,       # a signal travelling from one gate to the next
-    "gate": 1,       # pause while a gate glows before the signals move on
+    "wire": 0.55,       # a signal travelling from one gate to the next
+    "gate": 0.45,       # pause while a gate glows before the signals move on
     "celebrate": 2.4,   # pause after a solved puzzle before the next one starts
     "welcome": 1.3,     # "Welcome, agent..." after the right password
 }
@@ -111,6 +132,9 @@ GATES_WITHOUT_CONTROLS = {"X", "H"}
 GATES_WITH_ONE_CONTROL = {"CNOT"}
 GATES_WITH_TWO_CONTROLS = {"CCNOT"}
 ALL_GATES = GATES_WITHOUT_CONTROLS | GATES_WITH_ONE_CONTROL | GATES_WITH_TWO_CONTROLS
+
+# The settings a hint can have (a typo like "pulse_on_fial" is reported)
+HINT_SETTINGS = {"text", "pulse_on_start", "pulse_on_fail"}
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +164,20 @@ def find_problems(puzzle):
         if value not in (0, 1, "S"):
             problems.append(f'output {value!r} should be 0, 1 or "S"')
 
-    # 3. Every gate must be a known type, on real wires, with the right controls
+    # 3. The hint (optional) must be text, or {"text": ..., plus true/false settings}
+    hint = puzzle.get("hint")
+    if isinstance(hint, dict):
+        if not str(hint.get("text", "")).strip():
+            problems.append('"hint" needs some "text"')
+        for key, value in hint.items():
+            if key not in HINT_SETTINGS:
+                problems.append(f'unknown hint setting "{key}", use one of {sorted(HINT_SETTINGS)}')
+            elif key != "text" and not isinstance(value, bool):
+                problems.append(f'hint "{key}" should be true or false')
+    elif hint is not None and not isinstance(hint, str):
+        problems.append('"hint" should be text, or {"text": ..., "pulse_on_start": ..., "pulse_on_fail": ...}')
+
+    # 4. Every gate must be a known type, on real wires, with the right controls
     for number, gate in enumerate(puzzle["gates"], start=1):
         kind = gate.get("type")
         where = f"gate {number} ({kind})"
@@ -251,7 +288,7 @@ iframe {{
 # ---------------------------------------------------------------------------
 # The app itself
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="Qbit Quest", page_icon="🧩", layout="wide")
+st.set_page_config(page_title="Quantum Computer", page_icon="🧩", layout="wide")
 st.markdown(PAGE_CSS, unsafe_allow_html=True)
 
 puzzles, broken = load_puzzles()

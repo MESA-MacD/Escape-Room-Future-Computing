@@ -69,7 +69,7 @@ import streamlit.components.v1 as components
 # File locations (relative to this file, so it works locally AND when hosted)
 # ---------------------------------------------------------------------------
 HERE = Path(__file__).parent
-PUZZLE_DIR = HERE / "puzzles"
+PUZZLE_DIR = HERE / "Puzzles"
 GAME_PAGE = HERE / "game.html"
 SETTINGS_FILE = HERE / "escape_room.json"
 

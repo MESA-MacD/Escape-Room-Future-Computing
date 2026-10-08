@@ -1,0 +1,13 @@
+{
+  "id": "Simple",
+  "level": 1,
+  "mode": "find_inputs",
+  "num_qubits": 1,
+  "gates": [],
+  "outputs": [0],
+  "hint": {
+    "text": "Match the colour of the input (left) to the output (right). Click on the '?' square!",
+    "pulse_on_start": true,
+    "pulse_on_fail": true
+  }
+}

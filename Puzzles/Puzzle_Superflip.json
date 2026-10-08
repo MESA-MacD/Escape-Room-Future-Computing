@@ -1,0 +1,15 @@
+{
+  "id": "Superflip",
+  "level": 5,
+  "mode": "find_inputs",
+  "num_qubits": 1,
+  "gates": [
+    {"type": "H", "target": 0}
+  ],
+  "outputs": ["S"],
+  "hint": {
+    "text": "The diamond is an superflip gate! It creates a signal that is both black AND white at the same time. This is only possible in quantum computers!",
+    "pulse_on_start": true,
+    "pulse_on_fail": true
+  }
+}

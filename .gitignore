@@ -1,0 +1,26 @@
+# uv / virtual environment
+.venv/
+
+# Python bytecode and builds
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local config
+.env
+
+# PyCharm
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

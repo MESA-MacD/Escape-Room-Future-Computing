@@ -1,6 +1,6 @@
 {
   "id": "Double Control Gate",
-  "level": 4,
+  "level": 5,
   "mode": "find_inputs",
   "num_qubits": 3,
   "gates": [

@@ -1,6 +1,6 @@
 {
   "id": "CNOT",
-  "level": 3,
+  "level": 4,
   "mode": "find_inputs",
   "num_qubits": 2,
   "gates": [{"type": "CNOT", "target": 0, "control":  1}],

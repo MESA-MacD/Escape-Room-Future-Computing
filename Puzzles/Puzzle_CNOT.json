@@ -3,13 +3,10 @@
   "level": 3.1,
   "mode": "find_inputs",
   "num_qubits": 2,
-  "gates": [
-    {"type": "CNOT", "target": 0, "control":  1},
-    {"type": "CNOT", "target": 1, "control":  0}
-  ],
-  "outputs": [1, 1],
+  "gates": [{"type": "CNOT", "target": 0, "control":  1}],
+  "outputs": [1, 0],
   "hint": {
-    "text": "Start with the first gate. One you know the signals after the first gate you can find out how the second gate changes things.",
+    "text": "If the activation gate receives a black signal the flip gate does not work!",
     "pulse_on_start": false,
     "pulse_on_fail": true
   }

@@ -1,0 +1,13 @@
+{
+  "id": "CNOT_2",
+  "level": 3.2,
+  "mode": "find_inputs",
+  "num_qubits": 2,
+  "gates": [{"type": "CNOT", "target": 0, "control":  1}],
+  "outputs": [1, 0],
+  "hint": {
+    "text": "If the activation gate receives a black signal the flip gate does not work!",
+    "pulse_on_start": false,
+    "pulse_on_fail": true
+  }
+}

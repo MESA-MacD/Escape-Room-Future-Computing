@@ -1,6 +1,6 @@
 {
   "id": "Simple_2",
-  "level": 2,
+  "level": 1.2,
   "mode": "find_inputs",
   "num_qubits": 1,
   "gates": [],

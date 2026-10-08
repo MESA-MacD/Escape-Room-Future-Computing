@@ -1,6 +1,6 @@
 {
-  "id": "Superflip",
-  "level": 6,
+  "id": "Superflip_1",
+  "level": 4.1,
   "mode": "find_inputs",
   "num_qubits": 1,
   "gates": [

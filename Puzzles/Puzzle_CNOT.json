@@ -1,13 +1,16 @@
 {
-  "id": "CNOT",
-  "level": 4,
+  "id": "CNOT_1",
+  "level": 3.1,
   "mode": "find_inputs",
   "num_qubits": 2,
-  "gates": [{"type": "CNOT", "target": 0, "control":  1}],
-  "outputs": [1, 0],
+  "gates": [
+    {"type": "CNOT", "target": 0, "control":  1},
+    {"type": "CNOT", "target": 1, "control":  0}
+  ],
+  "outputs": [1, 1],
   "hint": {
-    "text": "The octagon is an activation gate! It needs a white signal to make the triangle work.",
-    "pulse_on_start": true,
+    "text": "Start with the first gate. One you know the signals after the first gate you can find out how the second gate changes things.",
+    "pulse_on_start": false,
     "pulse_on_fail": true
   }
 }

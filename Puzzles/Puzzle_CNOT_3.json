@@ -1,0 +1,13 @@
+{
+  "id": "CNOT_3",
+  "level": 3.3,
+  "mode": "find_inputs",
+  "num_qubits": 2,
+  "gates": [{"type": "CNOT", "target": 0, "control":  1}],
+  "outputs": [1, 1],
+  "hint": {
+    "text": "The octagon is an activation gate! It needs a white signal to make the triangle work.",
+    "pulse_on_start": true,
+    "pulse_on_fail": true
+  }
+}

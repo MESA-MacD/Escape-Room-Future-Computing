@@ -1,6 +1,6 @@
 {
-  "id": "Double Control Gate",
-  "level": 5,
+  "id": "CNOT_4",
+  "level": 3.4,
   "mode": "find_inputs",
   "num_qubits": 3,
   "gates": [

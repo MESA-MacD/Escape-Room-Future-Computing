@@ -1,0 +1,16 @@
+{
+  "id": "Superflip_2",
+  "level": 4.2,
+  "mode": "find_inputs",
+  "num_qubits": 2,
+  "gates": [
+    {"type": "CNOT", "target": 0, "control":  1},
+    {"type": "H", "target": 1}
+  ],
+  "outputs": [1, "S"],
+  "hint": {
+    "text": "First ignore the superflip and figure out how to get the top section working.",
+    "pulse_on_start": false,
+    "pulse_on_fail": true
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "Superflip",
+  "level": 5,
+  "mode": "find_inputs",
+  "num_qubits": 1,
+  "gates": [
+    {"type": "H", "target": 0}
+  ],
+  "outputs": ["S"]
+}

@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<!--
+  QBIT QUEST: the game page.
+
+  app.py loads this file, puts the puzzles and escape room settings into it,
+  and shows it. Everything the players see and do happens here.
+
+  THE THREE SCREENS
+    login   -> a pretend computer asking for a password
+    game    -> the puzzles, one after another (solve one to unlock the next)
+    victory -> "you have beaten the escape room"
+
+  THE CODE, IN ORDER
+    1. DATA             puzzles and settings (inserted by app.py)
+    2. LOOK AND TIMING  sizes, colours and speeds: tweak these freely
+    3. SIMULATION       works out the signal on every wire after every gate
+    4. DRAWING          builds the circuit picture
+    5. ANIMATION        signals travelling, gates glowing, screen flashes
+    6. SAVED PROGRESS   so refreshing the page doesn't lose your place
+    7. LOGIN SCREEN
+    8. PUZZLE SCREEN
+    9. VICTORY SCREEN
+   10. START
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Two retro computer fonts: a chunky pixel font for headings and buttons,
+     and a terminal font that stays readable for smaller text -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  /* ================= Colours and fonts used everywhere ================= */
+  :root {
+    --background: #0e1124;              /* deep night blue, must match BACKGROUND in app.py */
+    --grid: rgba(63, 243, 255, 0.05);   /* faint grid lines, like a computer screen */
+    --panel: #171b38;
+    --text: #e8e9ff;
+    --muted: #8d92c9;
+    --pink: #ff4fd8;
+    --cyan: #3ff3ff;
+    --win: #3dff9a;
+    --lose: #ff4b4b;
+    --pixel-font: "Press Start 2P", monospace;
+    --terminal-font: "VT323", monospace;
+  }
+
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    color: var(--text); font-family: var(--terminal-font);
+    background-color: var(--background);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    user-select: none; -webkit-user-select: none;   /* no accidental text highlighting */
+    -webkit-tap-highlight-color: transparent;       /* no grey flash on phone taps */
+  }
+  button { font-family: inherit; color: inherit; border: none; cursor: pointer; }
+  button:disabled { cursor: default; }
+  :focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+
+  /* Only one screen shows at a time; the active one fades in */
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; }
+  .screen.active { display: flex; animation: fade-in 0.5s ease; }
+  @keyframes fade-in { from { opacity: 0; } }
+
+  /* Something wrong shakes (wrong password, wrong goal box) */
+  .shake { animation: shake 0.45s; transform-box: fill-box; transform-origin: center; }
+  @keyframes shake {
+    20% { transform: translateX(-8px); } 40% { transform: translateX(8px); }
+    60% { transform: translateX(-5px); } 80% { transform: translateX(5px); }
+  }
+
+  /* Coloured glow around the edges of the screen: green = right, red = wrong.
+     It sits on top of everything but lets clicks pass straight through. */
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: 0; }
+  #vignette.win {
+    background: radial-gradient(ellipse at center, transparent 35%, rgba(61, 255, 154, 0.55) 100%);
+    box-shadow: inset 0 0 120px rgba(61, 255, 154, 0.7);
+  }
+  #vignette.lose {
+    background: radial-gradient(ellipse at center, transparent 35%, rgba(255, 75, 75, 0.55) 100%);
+    box-shadow: inset 0 0 120px rgba(255, 75, 75, 0.7);
+  }
+  #vignette.flash { animation: vignette-flash 1.2s ease-out forwards; }
+  @keyframes vignette-flash { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* The whole puzzle screen shakes after a wrong answer.
+     (Uses the id so it wins over the screen's fade-in animation.) */
+  #game.screen-shake { animation: screen-shake 0.5s; }
+  @keyframes screen-shake {
+    15% { transform: translate(-14px, 4px); } 30% { transform: translate(12px, -4px); }
+    45% { transform: translate(-10px, 3px); } 60% { transform: translate(8px, -2px); }
+    75% { transform: translate(-4px, 1px); }
+  }
+
+  /* ================= Login screen ================= */
+  .status-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 18px; font-family: var(--pixel-font); font-size: 11px; color: var(--muted);
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .status-icons { display: flex; align-items: center; gap: 14px; }
+  .battery { width: 22px; height: 10px; border: 2px solid var(--muted); border-radius: 2px; position: relative; }
+  .battery::after { content: ""; position: absolute; inset: 1px 4px 1px 1px; background: var(--win); }
+
+  .login-centre {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding-bottom: 30px;
+  }
+  .avatar {
+    width: 100px; height: 100px; border-radius: 50%; padding: 4px;
+    background: conic-gradient(var(--pink), var(--cyan), var(--pink));
+    box-shadow: 0 0 24px rgba(255, 79, 216, 0.45), 0 0 24px rgba(63, 243, 255, 0.35);
+  }
+  .avatar svg { width: 100%; height: 100%; display: block; border-radius: 50%; background: var(--panel); }
+  .user-name { font-family: var(--pixel-font); font-size: 18px; text-shadow: 0 0 10px var(--cyan); }
+  .password-row { display: flex; gap: 8px; }
+  #password {
+    width: min(260px, 50vw); padding: 8px 14px;
+    font-family: var(--terminal-font); font-size: 26px; letter-spacing: 3px; color: var(--text);
+    background: rgba(255, 255, 255, 0.06); border: 2px solid rgba(63, 243, 255, 0.45);
+    border-radius: 8px; outline: none;
+    user-select: text; -webkit-user-select: text;   /* needed so iPhones let you type */
+  }
+  #password:focus { border-color: var(--cyan); box-shadow: 0 0 14px rgba(63, 243, 255, 0.4); }
+  #password::placeholder { color: var(--muted); letter-spacing: 0; }
+  #login-button {
+    width: 54px; border-radius: 8px; font-size: 24px;
+    background: var(--pink); box-shadow: 0 0 14px var(--pink);
+  }
+  #login-message { min-height: 26px; font-size: 24px; }
+  #login-message.error { color: var(--lose); }
+  #login-message.welcome { color: var(--win); }
+  #login-hint { min-height: 22px; font-size: 21px; color: var(--muted); }
+
+  /* ================= Puzzle screen ================= */
+  #top-bar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 18px; font-family: var(--pixel-font); font-size: 13px;
+  }
+  #counter { white-space: nowrap; }
+  #counter-current { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+  #progress { display: flex; gap: 6px; flex: 1; }     /* one bar per puzzle */
+  .progress-step { width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); }
+  .progress-step.done { background: var(--win); box-shadow: 0 0 6px var(--win); }
+  .progress-step.current { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+  #timer { color: var(--muted); }
+
+  /* Circuit on the left, big Confirm button on the right */
+  #play { flex: 1; min-height: 0; display: flex; align-items: center; gap: 16px; padding: 0 20px 16px; }
+  #stage { flex: 1; height: 100%; min-width: 0; }
+  #stage svg { width: 100%; height: 100%; display: block; }
+
+  /* THE CONFIRM BUTTON: big, bright, and pulsing when it's ready to press */
+  #confirm {
+    flex: none; width: clamp(130px, 20vw, 230px); height: clamp(90px, 42%, 170px);
+    border-radius: 20px; font-family: var(--pixel-font); font-size: clamp(13px, 1.9vw, 22px); color: #fff;
+    background: linear-gradient(180deg, #ff6fde, #e0129c);
+    box-shadow: 0 0 28px var(--pink), inset 0 -8px 0 rgba(0, 0, 0, 0.25);
+    transition: transform 0.1s;
+  }
+  #confirm.ready { animation: ready-pulse 1.1s ease-in-out infinite alternate; }
+  @keyframes ready-pulse {
+    to { transform: scale(1.05); box-shadow: 0 0 50px var(--pink), 0 0 90px rgba(255, 79, 216, 0.5), inset 0 -8px 0 rgba(0, 0, 0, 0.25); }
+  }
+  #confirm:active:not(:disabled) { transform: translateY(3px) scale(0.97); }
+  #confirm:disabled { background: #232748; color: #5a6090; box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.25); }
+
+  /* Input squares are clickable */
+  .input-box { cursor: pointer; }
+  .input-box:hover rect { stroke-width: 6; }
+  .input-box:focus:not(:focus-visible) { outline: none; }   /* no ring after a tap, only for keyboard users */
+
+  /* "Puzzle 2 / 4" flashes up when a puzzle starts */
+  #banner {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; opacity: 0; z-index: 5;
+    background: rgba(14, 17, 36, 0.8);
+    font-family: var(--pixel-font); font-size: clamp(20px, 4vw, 40px);
+    text-shadow: 0 0 4px var(--cyan), 0 0 18px var(--cyan);
+  }
+  #banner.show { animation: banner 1.6s ease forwards; }
+  @keyframes banner { 0% { opacity: 0; } 15%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* ================= Victory screen ================= */
+  .victory-centre {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; padding: 20px; text-align: center;
+  }
+  .victory-title {
+    font-family: var(--pixel-font); font-size: clamp(22px, 4.5vw, 46px); color: #fff;
+    text-shadow: 0 0 6px var(--pink), 0 0 22px var(--pink), 0 0 44px var(--pink);
+  }
+  .victory-subtitle {
+    font-family: var(--pixel-font); font-size: clamp(11px, 1.8vw, 18px); line-height: 1.7;
+    color: var(--cyan); text-shadow: 0 0 10px var(--cyan);
+  }
+  #escape-time { font-size: 28px; }
+  #final-code-area { display: none; flex-direction: column; align-items: center; gap: 6px; font-size: 24px; color: var(--muted); }
+  #final-code {
+    font-family: var(--pixel-font); font-size: clamp(24px, 5vw, 48px); letter-spacing: 0.3em;
+    padding: 14px 10px 14px 24px; border: 2px dashed rgba(61, 255, 154, 0.5); border-radius: 10px;
+    color: var(--win); text-shadow: 0 0 14px var(--win);
+  }
+  #play-again { background: none; font-size: 22px; color: var(--muted); text-decoration: underline; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .screen.active, #confirm.ready, .shake, #game.screen-shake { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ===================== LOGIN SCREEN ===================== -->
+  <section id="login" class="screen">
+    <div class="status-bar">
+      <span>QBIT-OS</span>
+      <span class="status-icons"><span id="clock"></span><span class="battery"></span></span>
+    </div>
+    <div class="login-centre" id="login-card">
+      <div class="avatar">
+        <!-- A tiny circuit: a wire through a triangle gate -->
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <line x1="12" y1="50" x2="88" y2="50" stroke="#fff" stroke-width="6"/>
+          <polygon points="38,30 38,70 68,50" fill="#ffd23f"/>
+        </svg>
+      </div>
+      <div class="user-name">Minnie Rahl. Password: 12345</div>
+      <div class="password-row">
+        <input id="password" type="password" placeholder="Password" autocomplete="off" aria-label="Password">
+        <button id="login-button" aria-label="Log in">➜</button>
+      </div>
+      <div id="login-message" role="status"></div>
+      <div id="login-hint"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PUZZLE SCREEN ===================== -->
+  <section id="game" class="screen">
+    <div id="top-bar">
+      <div id="counter">Puzzle <span id="counter-current">1</span> / <span id="counter-total">1</span></div>
+      <div id="progress"></div>
+      <div id="timer">00:00</div>
+    </div>
+    <div id="play">
+      <div id="stage"></div>
+      <button id="confirm" disabled>Confirm</button>
+    </div>
+    <div id="banner"></div>
+  </section>
+
+  <!-- ===================== VICTORY SCREEN ===================== -->
+  <section id="victory" class="screen">
+    <div class="victory-centre">
+      <div class="victory-title">Congratulations!</div>
+      <div class="victory-subtitle">You have beaten<br>the escape room</div>
+      <div id="escape-time"></div>
+      <div id="final-code-area">Your code<span id="final-code"></span></div>
+      <button id="play-again">Play again</button>
+    </div>
+  </section>
+
+  <!-- Green or red glow around the screen edges (see flashScreen) -->
+  <div id="vignette"></div>
+
+<script>
+// =====================================================================
+// 1. DATA
+// app.py replaces the two placeholders below with the real puzzles and
+// the settings from escape_room.json. The defaults are only used if you
+// open this file directly in a browser for testing.
+// =====================================================================
+const PUZZLES = /*PUZZLES*/[];
+const ROOM = Object.assign(
+  { password: "qubit", password_hint: "", final_code: "" },
+  /*SETTINGS*/{}
+);
+
+
+// =====================================================================
+// 2. LOOK AND TIMING
+// =====================================================================
+
+// Sizes, in drawing units (the picture scales to fit the screen)
+const LAYOUT = {
+  rowGap: 120,        // distance between wires
+  gateGap: 160,       // distance between gates
+  box: 80,            // size of the input and goal squares
+  topWireY: 70,       // height of the first wire
+  inputX: 30,         // left edge of the input squares
+  firstGateX: 230,    // centre of the first gate
+  wireWidth: 8,
+};
+
+// How long things take, in milliseconds. app.py replaces the placeholder
+// with the values from its ANIMATION settings; the defaults here are only
+// used if you open this file directly in a browser for testing.
+const TIMING = Object.assign(
+  {
+    wire: 550,         // a signal travelling from one gate to the next
+    gate: 450,         // pause while a gate glows
+    celebrate: 2400,   // pause after a solved puzzle before the next one
+    welcome: 1300,     // "Welcome" message after the right password
+  },
+  /*TIMING*/{}
+);
+
+// Colours. White is 1, black is 0. A superposition ("S") is drawn with
+// black-and-white stripes, defined in the drawing section below.
+const COLOUR = {
+  one: "#ffffff",
+  zero: "#000000",
+  cableEdge: "#59608f",                     // thin edge around signals, so black shows up on the dark background
+  emptyWire: "rgba(255, 255, 255, 0.13)",   // wire with no signal yet
+  idleArrow: "#ffb35c",                     // control arrow before it fires
+  xGate: "#ffd23f",                         // yellow triangle
+  control: "#3a4fc4",                       // blue octagon
+  gemFill: "#fcee3c",                       // Superflippy gem
+  gemEdge: "#ff3b3b",
+  boxEdge: "#c9cdf0",                       // outline of the input and goal squares
+  unknownInput: "rgba(255, 255, 255, 0.06)",// input square before it's clicked
+  questionMark: "#ffd1f3",
+  dimGlow: "#5a64a8",                       // a gate receiving 0 glows dimly
+  pink: "#ff4fd8", cyan: "#3ff3ff", win: "#3dff9a", lose: "#ff4b4b",
+};
+
+
+// =====================================================================
+// 3. SIMULATION
+// We keep a list of numbers (amplitudes), one for every possible pattern
+// of 0s and 1s across the wires. That's how real quantum computers are
+// simulated, and it lets superpositions behave properly: two Superflippy
+// gems in a row cancel out and give back the original signal.
+// =====================================================================
+
+// The control wires of a gate (none for X and H)
+function controlsOf(gate) {
+  if (gate.controls) return gate.controls;               // CCNOT
+  if (gate.control !== undefined) return [gate.control]; // CNOT
+  return [];
+}
+
+// Apply one gate to the amplitudes, changing them in place
+function applyGate(gate, amplitudes) {
+  const targetBit = 1 << gate.target;
+  // A number with a 1 in the position of every control wire
+  const controlMask = controlsOf(gate).reduce((mask, c) => mask | (1 << c), 0);
+
+  for (let i = 0; i < amplitudes.length; i++) {
+    if (i & targetBit) continue;                         // handle each pair once, from its "target = 0" side
+    if ((i & controlMask) !== controlMask) continue;     // some control is 0: gate does nothing here
+    const j = i | targetBit;                             // the same pattern with the target flipped
+    const a = amplitudes[i], b = amplitudes[j];
+
+    if (gate.type === "H") {
+      // Superflippy: mixes the two patterns together
+      amplitudes[i] = (a + b) / Math.SQRT2;
+      amplitudes[j] = (a - b) / Math.SQRT2;
+    } else {
+      // X, CNOT, CCNOT: swap the two patterns, which flips the target
+      amplitudes[i] = b;
+      amplitudes[j] = a;
+    }
+  }
+}
+
+// Turn the amplitudes into one signal per wire: 0, 1 or "S"
+function signalsOf(amplitudes, numQubits) {
+  const chanceOfOne = new Array(numQubits).fill(0);
+  amplitudes.forEach((a, pattern) => {
+    for (let q = 0; q < numQubits; q++) {
+      if ((pattern >> q) & 1) chanceOfOne[q] += a * a;
+    }
+  });
+  return chanceOfOne.map(p => (p < 1e-9 ? 0 : p > 1 - 1e-9 ? 1 : "S"));
+}
+
+// Run the whole circuit. Returns the signals on every wire at every
+// moment: history[0] = the inputs, history[k] = just after gate k.
+function simulate(puzzle, inputs) {
+  const n = puzzle.num_qubits;
+  const amplitudes = new Float64Array(1 << n);
+  const startPattern = inputs.reduce((pattern, bit, q) => pattern | (bit << q), 0);
+  amplitudes[startPattern] = 1;
+
+  const history = [signalsOf(amplitudes, n)];
+  for (const gate of puzzle.gates) {
+    applyGate(gate, amplitudes);
+    history.push(signalsOf(amplitudes, n));
+  }
+  return history;
+}
+
+
+// =====================================================================
+// 4. DRAWING
+// =====================================================================
+const SVG = "http://www.w3.org/2000/svg";
+
+// Make an SVG element with some attributes and add it to a parent
+function draw(tag, attributes = {}, parent = null) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+// Where things go
+const wireY = q => LAYOUT.topWireY + q * LAYOUT.rowGap;
+const gateX = k => LAYOUT.firstGateX + k * LAYOUT.gateGap;
+const goalX = puzzle => gateX(Math.max(puzzle.gates.length, 1)) - 40;
+
+// Each wire is cut into pieces at the gates. Piece j runs from
+// edges[j] to edges[j + 1] and carries the signal from history[j].
+function pieceEdges(puzzle) {
+  const gateCentres = puzzle.gates.map((_, k) => gateX(k));
+  return [LAYOUT.inputX + LAYOUT.box, ...gateCentres, goalX(puzzle)];
+}
+
+// Does this gate sit on wire q (as its target or one of its controls)?
+function gateTouchesWire(gate, q) {
+  return gate.target === q || controlsOf(gate).includes(q);
+}
+
+// Where an arrowhead points to at the end of piece j on wire q:
+// the left edge of the gate it runs into, or the goal box. null = no arrowhead.
+function arrowTipX(puzzle, j, q) {
+  const gate = puzzle.gates[j];
+  if (!gate) return goalX(puzzle) - 2;                   // last piece: into the goal box
+  if (!gateTouchesWire(gate, q)) return null;            // wire just passes by this gate
+  const isControl = gate.target !== q;
+  const halfWidth = isControl ? 37 : gate.type === "H" ? 36 : 30;
+  return gateX(j) - halfWidth - 2;
+}
+
+// What to paint a signal with
+function paint(signal) {
+  if (signal === 1) return COLOUR.one;
+  if (signal === 0) return COLOUR.zero;
+  return "url(#superposition)";   // black-and-white stripes
+}
+
+// Which glow a gate gets, based on the signal arriving at it:
+// bright white for 1, dim for 0, pink-and-cyan for a superposition
+function glow(signal) {
+  return signal === 1 ? "url(#glow-one)" : signal === 0 ? "url(#glow-zero)" : "url(#glow-super)";
+}
+
+// --- Shapes ---------------------------------------------------------
+
+function arrowhead(parent, tipX, y, fill, edge = "none") {
+  return draw("polygon", {
+    points: `${tipX - 18},${y - 12} ${tipX - 18},${y + 12} ${tipX},${y}`,
+    fill, stroke: edge, "stroke-width": 2, "stroke-linejoin": "round",
+  }, parent);
+}
+
+function triangle(parent, x, y) {              // X gate (and the target of CNOT)
+  return draw("polygon", { points: `${x - 28},${y - 34} ${x - 28},${y + 34} ${x + 34},${y}`, fill: COLOUR.xGate }, parent);
+}
+
+function octagon(parent, x, y, radius = 38) {  // control
+  const corners = [];
+  for (let k = 0; k < 8; k++) {
+    const angle = (22.5 + 45 * k) * Math.PI / 180;
+    corners.push(`${(x + radius * Math.cos(angle)).toFixed(1)},${(y + radius * Math.sin(angle)).toFixed(1)}`);
+  }
+  return draw("polygon", { points: corners.join(" "), fill: COLOUR.control }, parent);
+}
+
+function gem(parent, x, y) {                   // Superflippy (H gate)
+  return draw("polygon", {
+    points: `${x - 26},${y - 38} ${x + 26},${y - 38} ${x + 42},${y - 13} ${x},${y + 42} ${x - 42},${y - 13}`,
+    fill: COLOUR.gemFill, stroke: COLOUR.gemEdge, "stroke-width": 7,
+  }, parent);
+}
+
+// --- Patterns and glows (reusable effects) ----------------------------
+
+function makeDefinitions(svg, width, height) {
+  const defs = draw("defs", {}, svg);
+
+  // Black-and-white stripes for superposition signals
+  const stripes = draw("pattern", {
+    id: "superposition", width: 16, height: 16,
+    patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)",
+  }, defs);
+  draw("rect", { width: 8, height: 16, fill: COLOUR.one }, stripes);
+  draw("rect", { x: 8, width: 8, height: 16, fill: COLOUR.zero }, stripes);
+
+  // A glow is a blurred, coloured copy of a shape drawn behind it.
+  // "layers" lists the colours, each with a sideways nudge (dx).
+  function makeGlow(id, layers, blur) {
+    const filter = draw("filter", {
+      id, filterUnits: "userSpaceOnUse",
+      x: -60, y: -60, width: width + 120, height: height + 120,
+    }, defs);
+    draw("feGaussianBlur", { in: "SourceAlpha", stdDeviation: blur, result: "blur" }, filter);
+    const glows = [];
+    layers.forEach(([colour, dx], i) => {
+      draw("feOffset", { in: "blur", dx, dy: 0, result: `moved${i}` }, filter);
+      draw("feFlood", { "flood-color": colour, result: `colour${i}` }, filter);
+      draw("feComposite", { in: `colour${i}`, in2: `moved${i}`, operator: "in", result: `glow${i}` }, filter);
+      glows.push(`glow${i}`, `glow${i}`);   // drawn twice for extra brightness
+    });
+    const merge = draw("feMerge", {}, filter);
+    glows.forEach(name => draw("feMergeNode", { in: name }, merge));
+    draw("feMergeNode", { in: "SourceGraphic" }, merge);   // the shape itself on top
+  }
+
+  makeGlow("glow-one",   [[COLOUR.one, 0]], 9);                       // gate received a 1
+  makeGlow("glow-zero",  [[COLOUR.dimGlow, 0]], 7);                   // gate received a 0
+  makeGlow("glow-super", [[COLOUR.cyan, -6], [COLOUR.pink, 6]], 8);   // gate received a superposition
+  makeGlow("glow-pink",  [[COLOUR.pink, 0]], 5);                      // the "?" marks
+  makeGlow("glow-win",   [[COLOUR.win, 0]], 10);                      // goal box matched
+  makeGlow("glow-lose",  [[COLOUR.lose, 0]], 10);                     // goal box didn't match
+}
+
+// --- The whole board ------------------------------------------------
+
+// Draws a puzzle and remembers the parts we'll need to change later
+function drawBoard(puzzle) {
+  const n = puzzle.num_qubits;
+  const edges = pieceEdges(puzzle);
+  const width = goalX(puzzle) + LAYOUT.box + 30;
+  const height = wireY(n - 1) + LAYOUT.box / 2 + 40;
+
+  const stage = document.getElementById("stage");
+  stage.innerHTML = "";
+  const svg = draw("svg", { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "xMidYMid meet" }, stage);
+  makeDefinitions(svg, width, height);
+
+  // Layers, bottom to top, so signals slide underneath the gates
+  const layer = {};
+  for (const name of ["emptyWires", "signals", "controlArrows", "gates", "boxes"]) {
+    layer[name] = draw("g", {}, svg);
+  }
+
+  // Empty wires (faint), with faint arrowheads, before any signal arrives
+  for (let q = 0; q < n; q++) {
+    const y = wireY(q);
+    draw("line", {
+      x1: edges[0], y1: y, x2: edges[edges.length - 1], y2: y,
+      stroke: COLOUR.emptyWire, "stroke-width": LAYOUT.wireWidth,
+    }, layer.emptyWires);
+    for (let j = 0; j < edges.length - 1; j++) {
+      const tip = arrowTipX(puzzle, j, q);
+      if (tip !== null) arrowhead(layer.emptyWires, tip, y, COLOUR.emptyWire);
+    }
+  }
+
+  // Gates. For each one we remember its target shape and its control
+  // parts, so the animation can make them glow.
+  const gateParts = puzzle.gates.map((gate, k) => {
+    const x = gateX(k), targetY = wireY(gate.target);
+
+    const controls = controlsOf(gate).map(c => {
+      // Arrow from the octagon up or down to the target shape.
+      // A slightly wider "edge" line sits underneath, so a black arrow
+      // still shows up against the dark background.
+      const controlY = wireY(c);
+      const direction = Math.sign(targetY - controlY);   // +1 = pointing down
+      const tipY = targetY - direction * 22;
+      const lineEnds = { x1: x, y1: controlY + direction * 38, x2: x, y2: tipY - direction * 16 };
+      draw("line", { ...lineEnds, stroke: COLOUR.cableEdge, "stroke-width": LAYOUT.wireWidth + 4 }, layer.controlArrows);
+      const line = draw("line", { ...lineEnds, stroke: COLOUR.idleArrow, "stroke-width": LAYOUT.wireWidth }, layer.controlArrows);
+      const head = draw("polygon", {
+        points: `${x - 12},${tipY - direction * 18} ${x + 12},${tipY - direction * 18} ${x},${tipY}`,
+        fill: COLOUR.idleArrow, stroke: COLOUR.cableEdge, "stroke-width": 2, "stroke-linejoin": "round",
+      }, layer.controlArrows);
+      return { wire: c, shape: octagon(layer.gates, x, controlY), line, head };
+    });
+
+    const target = gate.type === "H" ? gem(layer.gates, x, targetY) : triangle(layer.gates, x, targetY);
+    return { target, controls };
+  });
+
+  // Input squares (clickable) and goal squares
+  const inputBoxes = [], goalBoxes = [];
+  for (let q = 0; q < n; q++) {
+    inputBoxes.push(drawInputBox(layer.boxes, q));
+    goalBoxes.push(drawGoalBox(layer.boxes, goalX(puzzle), wireY(q), puzzle.outputs[q]));
+  }
+
+  return { edges, signalLayer: layer.signals, gateParts, inputBoxes, goalBoxes };
+}
+
+// An input square: shows "?" until clicked, then black (0) or white (1)
+function drawInputBox(parent, q) {
+  const y = wireY(q), size = LAYOUT.box;
+  const group = draw("g", {
+    class: "input-box", role: "button", tabindex: 0, "aria-label": `Input for qubit ${q + 1}`,
+  }, parent);
+  const square = draw("rect", {
+    x: LAYOUT.inputX, y: y - size / 2, width: size, height: size,
+    fill: COLOUR.unknownInput, stroke: COLOUR.boxEdge, "stroke-width": 4, "stroke-dasharray": "10 7",
+  }, group);
+  const questionMark = draw("text", {
+    x: LAYOUT.inputX + size / 2 + 2, y: y + 3, "text-anchor": "middle", "dominant-baseline": "middle",
+    "font-size": 34, "font-family": "'Press Start 2P', monospace",
+    fill: COLOUR.questionMark, filter: "url(#glow-pink)",
+  }, group);
+  questionMark.textContent = "?";
+
+  // Clicking (or pressing Enter/Space) flips the square
+  group.addEventListener("click", () => flipInput(q));
+  group.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flipInput(q); }
+  });
+  return { square, questionMark };
+}
+
+// A goal square: white (1), black (0) or split diagonally (superposition)
+function drawGoalBox(parent, x, y, goal) {
+  const size = LAYOUT.box, top = y - size / 2;
+  const group = draw("g", {}, parent);
+  draw("rect", { x, y: top, width: size, height: size, fill: goal === 0 ? COLOUR.zero : COLOUR.one }, group);
+  if (goal === "S") {
+    // black top-right half, like the Superflippy picture
+    draw("polygon", { points: `${x},${top} ${x + size},${top} ${x + size},${top + size}`, fill: COLOUR.zero }, group);
+  }
+  draw("rect", { x, y: top, width: size, height: size, fill: "none", stroke: COLOUR.boxEdge, "stroke-width": 4 }, group);
+  return group;
+}
+
+
+// =====================================================================
+// 5. ANIMATION
+// =====================================================================
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Calls onFrame with a number going smoothly from 0 to 1 over "ms"
+function animate(ms, onFrame) {
+  return new Promise(resolve => {
+    const start = performance.now();
+    function frame(now) {
+      const progress = Math.min(1, (now - start) / ms);
+      onFrame(progress);
+      if (progress < 1) requestAnimationFrame(frame); else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// Restart a CSS animation class on an element (used for shaking)
+function replay(element, className) {
+  element.classList.remove(className);
+  void element.getBoundingClientRect();   // forces the browser to notice the removal
+  element.classList.add(className);
+}
+
+// Slide a signal along piece j of wire q, then colour its arrowhead.
+// Each signal is a "cable": a slightly wider edge line with the signal
+// colour on top, so black signals show up on the dark background.
+async function sendSignal(puzzle, j, q, signal) {
+  const { edges, signalLayer } = game.board;
+  const y = wireY(q), start = edges[j], end = edges[j + 1];
+  const ends = { x1: start, y1: y, x2: start, y2: y };
+  const edge = draw("line", { ...ends, stroke: COLOUR.cableEdge, "stroke-width": LAYOUT.wireWidth + 4 }, signalLayer);
+  const core = draw("line", { ...ends, stroke: paint(signal), "stroke-width": LAYOUT.wireWidth }, signalLayer);
+
+  await animate(TIMING.wire, progress => {
+    const x = start + (end - start) * progress;
+    edge.setAttribute("x2", x);
+    core.setAttribute("x2", x);
+  });
+
+  const tip = arrowTipX(puzzle, j, q);
+  if (tip !== null) arrowhead(signalLayer, tip, y, paint(signal), COLOUR.cableEdge);
+}
+
+// Light up gate k: each part glows with the signal arriving on its own wire.
+// Control arrows take on the control's signal: white = the flip happens,
+// black = nothing happens, stripes = it both does and doesn't!
+function lightUpGate(puzzle, k, signals) {
+  const parts = game.board.gateParts[k];
+  for (const control of parts.controls) {
+    const signal = signals[control.wire];
+    control.shape.setAttribute("filter", glow(signal));
+    control.line.setAttribute("stroke", paint(signal));
+    control.head.setAttribute("fill", paint(signal));
+  }
+  parts.target.setAttribute("filter", glow(signals[puzzle.gates[k].target]));
+}
+
+// Put the board back as it was before Confirm was pressed
+function clearAnimation() {
+  const board = game.board;
+  board.signalLayer.innerHTML = "";
+  for (const parts of board.gateParts) {
+    parts.target.removeAttribute("filter");
+    for (const control of parts.controls) {
+      control.shape.removeAttribute("filter");
+      control.line.setAttribute("stroke", COLOUR.idleArrow);
+      control.head.setAttribute("fill", COLOUR.idleArrow);
+    }
+  }
+  for (const box of board.goalBoxes) box.removeAttribute("filter");
+  game.hasRun = false;
+}
+
+// Flash a glow around the edges of the screen: "win" = green, "lose" = red.
+// A wrong answer also shakes the whole puzzle screen.
+function flashScreen(result) {
+  const vignette = document.getElementById("vignette");
+  vignette.className = result;          // sets the colour
+  replay(vignette, "flash");            // plays the fade in and out
+  if (result === "lose") replay(document.getElementById("game"), "screen-shake");
+}
+
+
+// =====================================================================
+// 6. SAVED PROGRESS
+// Progress is kept for this browser tab only (sessionStorage), so an
+// accidental refresh doesn't send the players back to the start, but a
+// new tab, or "Play again", starts a fresh game for the next group.
+// =====================================================================
+const SAVE_KEY = "qbit-quest-progress";
+
+// progress = { loggedIn, puzzle (index of the current puzzle), startedAt, finishedAt }
+let progress = { loggedIn: false, puzzle: 0, startedAt: null, finishedAt: null };
+
+function saveProgress() {
+  try { sessionStorage.setItem(SAVE_KEY, JSON.stringify(progress)); } catch { /* storage blocked: game still works */ }
+}
+
+function loadProgress() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SAVE_KEY));
+    if (saved && saved.loggedIn) progress = saved;
+  } catch { /* nothing saved, or storage blocked */ }
+}
+
+function forgetProgress() {
+  try { sessionStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
+  progress = { loggedIn: false, puzzle: 0, startedAt: null, finishedAt: null };
+}
+
+// Turn a number of milliseconds into "mm:ss" (or "h:mm:ss")
+function formatTime(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = String(Math.floor(totalSeconds / 60) % 60).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return hours ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+// Show one screen and hide the others
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(screen => screen.classList.toggle("active", screen.id === id));
+}
+
+
+// =====================================================================
+// 7. LOGIN SCREEN
+// =====================================================================
+const login = {
+  input: document.getElementById("password"),
+  button: document.getElementById("login-button"),
+  message: document.getElementById("login-message"),
+  hint: document.getElementById("login-hint"),
+  card: document.getElementById("login-card"),
+  wrongTries: 0,
+};
+
+// The clock in the corner, like a real computer
+function updateClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function showLogin() {
+  login.input.value = "";
+  login.input.disabled = false;
+  login.button.disabled = false;
+  login.message.textContent = "";
+  login.message.className = "";
+  login.hint.textContent = "";
+  login.wrongTries = 0;
+  showScreen("login");
+  login.input.focus();
+}
+
+// Check the password: ignores capital letters and spaces at either end
+function tryPassword() {
+  const typed = login.input.value.trim().toLowerCase();
+  const correct = String(ROOM.password).trim().toLowerCase();
+  if (!typed) return;
+
+  if (typed === correct) {
+    // Right password: say welcome, then start the first puzzle
+    login.input.disabled = true;
+    login.button.disabled = true;
+    login.message.className = "welcome";
+    login.message.textContent = "Welcome, Professor Minnie Rahl...";
+    setTimeout(() => {
+      progress = { loggedIn: true, puzzle: 0, startedAt: Date.now(), finishedAt: null };
+      saveProgress();
+      startPuzzle(0);
+    }, TIMING.welcome);
+  } else {
+    // Wrong password: shake, clear the box, maybe show the hint
+    login.wrongTries++;
+    login.message.className = "error";
+    login.message.textContent = "Incorrect password. Try again.";
+    login.input.value = "";
+    replay(login.card, "shake");
+    if (login.wrongTries >= 3 && ROOM.password_hint) {
+      login.hint.textContent = `Hint: ${ROOM.password_hint}`;
+    }
+  }
+}
+
+login.button.addEventListener("click", tryPassword);
+login.input.addEventListener("keydown", e => { if (e.key === "Enter") tryPassword(); });
+
+
+// =====================================================================
+// 8. PUZZLE SCREEN
+// =====================================================================
+const game = {
+  inputs: [],        // the player's choices: null ("?"), 0 or 1
+  busy: false,       // true while the animation runs (clicks are ignored)
+  hasRun: false,     // true after Confirm, until the player changes something
+  board: null,       // the drawn puzzle (from drawBoard)
+};
+const confirmButton = document.getElementById("confirm");
+
+// Start puzzle number "index" (0 = the first one)
+function startPuzzle(index) {
+  const puzzle = PUZZLES[index];
+  game.inputs = new Array(puzzle.num_qubits).fill(null);
+  game.busy = false;
+  game.hasRun = false;
+
+  showScreen("game");
+  game.board = drawBoard(puzzle);
+  updateCounter(index);
+  updateConfirmButton();
+
+  // Flash "Puzzle 2 / 4" across the screen
+  const banner = document.getElementById("banner");
+  banner.textContent = `Puzzle ${index + 1} / ${PUZZLES.length}`;
+  replay(banner, "show");
+}
+
+// "Puzzle 2 / 4" in the corner, plus one progress bar per puzzle
+function updateCounter(index) {
+  document.getElementById("counter-current").textContent = index + 1;
+  document.getElementById("counter-total").textContent = PUZZLES.length;
+  const bars = document.getElementById("progress");
+  bars.innerHTML = "";
+  PUZZLES.forEach((_, i) => {
+    const bar = document.createElement("div");
+    bar.className = "progress-step" + (i < index ? " done" : i === index ? " current" : "");
+    bars.appendChild(bar);
+  });
+}
+
+// The escape room timer in the top right corner
+function updateTimer() {
+  if (progress.startedAt && !progress.finishedAt) {
+    document.getElementById("timer").textContent = formatTime(Date.now() - progress.startedAt);
+  }
+}
+
+// Confirm can be pressed once every input is chosen. It pulses when ready.
+function updateConfirmButton() {
+  const ready = !game.busy && !game.inputs.includes(null);
+  confirmButton.disabled = !ready;
+  confirmButton.classList.toggle("ready", ready && !game.hasRun);
+}
+
+// Clicking an input square: "?" -> black (0) -> white (1) -> black (0) ...
+function flipInput(q) {
+  if (game.busy) return;
+  if (game.hasRun) clearAnimation();   // changing an answer starts a fresh try
+  game.inputs[q] = game.inputs[q] === 0 ? 1 : 0;
+
+  const { square, questionMark } = game.board.inputBoxes[q];
+  square.setAttribute("fill", game.inputs[q] === 1 ? COLOUR.one : COLOUR.zero);
+  questionMark.style.display = "none";
+  updateConfirmButton();
+}
+
+// The Confirm button: run the circuit through time, then check the answer
+async function runCircuit() {
+  const puzzle = PUZZLES[progress.puzzle];
+  if (game.hasRun) clearAnimation();
+  game.busy = true;
+  game.hasRun = true;
+  updateConfirmButton();
+
+  const history = simulate(puzzle, game.inputs);
+  const wires = [...Array(puzzle.num_qubits).keys()];
+
+  // Step through time: signals travel to the next gate on every wire at
+  // once, then that gate lights up, and so on until they reach the goals
+  for (let j = 0; j <= puzzle.gates.length; j++) {
+    await Promise.all(wires.map(q => sendSignal(puzzle, j, q, history[j][q])));
+    if (j < puzzle.gates.length) {
+      lightUpGate(puzzle, j, history[j]);
+      await wait(TIMING.gate);
+    }
+  }
+
+  const solved = checkAnswer(puzzle, history[history.length - 1]);
+  if (solved) {
+    // Keep everything locked, flash green, then move on
+    flashScreen("win");
+    await wait(TIMING.celebrate);
+    goToNextPuzzle();
+  } else {
+    // Flash red and shake, then let them change the inputs and try again
+    flashScreen("lose");
+    game.busy = false;
+    updateConfirmButton();
+  }
+}
+
+// Compare what arrived with the goal boxes: green glow = match, red = not.
+// Returns true if every goal matched.
+function checkAnswer(puzzle, finalSignals) {
+  let allMatch = true;
+  puzzle.outputs.forEach((goal, q) => {
+    const box = game.board.goalBoxes[q];
+    const matches = String(finalSignals[q]) === String(goal);
+    box.setAttribute("filter", matches ? "url(#glow-win)" : "url(#glow-lose)");
+    if (!matches) allMatch = false;
+  });
+  return allMatch;
+}
+
+// After a solved puzzle: the next one, or the victory screen after the last
+function goToNextPuzzle() {
+  progress.puzzle++;
+  if (progress.puzzle >= PUZZLES.length) {
+    progress.finishedAt = Date.now();
+    saveProgress();
+    showVictory();
+  } else {
+    saveProgress();
+    startPuzzle(progress.puzzle);
+  }
+}
+
+confirmButton.addEventListener("click", runCircuit);
+
+
+// =====================================================================
+// 9. VICTORY SCREEN
+// =====================================================================
+function showVictory() {
+  showScreen("victory");
+  document.getElementById("escape-time").textContent =
+    `Escaped in ${formatTime(progress.finishedAt - progress.startedAt)}`;
+
+  // The final code (for example for a padlock), if one is set
+  const codeArea = document.getElementById("final-code-area");
+  codeArea.style.display = ROOM.final_code ? "flex" : "none";
+  document.getElementById("final-code").textContent = ROOM.final_code;
+
+  // Three green flashes to celebrate
+  [0, 1300, 2600].forEach(delay => setTimeout(() => flashScreen("win"), delay));
+}
+
+// "Play again" wipes the progress and returns to the login screen
+document.getElementById("play-again").addEventListener("click", () => {
+  forgetProgress();
+  showLogin();
+});
+
+
+// =====================================================================
+// 10. START
+// =====================================================================
+updateClock();
+setInterval(updateClock, 10_000);
+setInterval(updateTimer, 500);
+
+// Carry on where this tab left off, or start at the login screen
+loadProgress();
+if (!progress.loggedIn) {
+  showLogin();
+} else if (progress.finishedAt || progress.puzzle >= PUZZLES.length) {
+  progress.finishedAt = progress.finishedAt || Date.now();
+  showVictory();
+} else {
+  startPuzzle(progress.puzzle);
+}
+</script>
+</body>
+</html>

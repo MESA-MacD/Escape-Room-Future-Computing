@@ -3,6 +3,7 @@
   "level": 4.2,
   "mode": "find_inputs",
   "num_qubits": 2,
+  "difficulty": "medium",
   "gates": [
     {"type": "CNOT", "target": 0, "control":  1},
     {"type": "H", "target": 1}

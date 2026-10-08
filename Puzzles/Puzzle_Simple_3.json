@@ -3,6 +3,7 @@
   "level": 1.3,
   "mode": "find_inputs",
   "num_qubits": 2,
+  "difficulty": "easy",
   "gates": [],
   "outputs": [0, 1],
   "hint": {

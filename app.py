@@ -9,25 +9,32 @@ HOW THE PROJECT FITS TOGETHER
                    the simulation and the animation all run here, in the
                    player's browser.
     puzzles/    <- one .json file per puzzle. Add as many as you like.
-    escape_room.json <- the login password and the end-of-game settings.
+    escape_room.json <- the login passwords and the end-of-game settings.
 
 WHAT THE PLAYERS SEE
 --------------------
-    1. A computer login screen asking for a password.
-    2. The puzzles, one after another, in order of "level".
-       Each one must be solved to move on.
+    1. A computer login screen asking for a password. Which password is
+       typed decides the difficulty: easy, medium or hard.
+    2. The puzzles for that difficulty, one after another, in order of
+       "level". Each one must be solved to move on.
     3. A "you have beaten the escape room" screen.
 
 ESCAPE ROOM SETTINGS (escape_room.json)
 ---------------------------------------
     {
-      "password": "qubit",                 needed to get past the login screen
-                                           (not case sensitive)
+      "passwords": {                       one password per difficulty
+        "easy": "qubit",                   (not case sensitive; leave a
+        "medium": "superposition",         difficulty out if you don't
+        "hard": "entanglement"             want it to be playable)
+      },
       "password_hint": "It's in the name", shown after 3 wrong tries ("" = never)
       "final_code": "4721"                 shown on the victory screen, e.g. for a
                                            padlock in the room ("" = don't show one)
     }
-    Note: a determined player could find the password by viewing the page
+    Each difficulty plays its own puzzles PLUS all the easier ones, so
+    "hard" plays everything, mixed together in order of "level".
+
+    Note: a determined player could find the passwords by viewing the page
     source. That's fine for a classroom game, but don't reuse a real password.
 
 WRITING A PUZZLE FILE
@@ -35,6 +42,7 @@ WRITING A PUZZLE FILE
     {
       "id": "chain-reaction",     a unique name for the puzzle
       "level": 3,                 puzzles are shown in order of level
+      "difficulty": "medium",     optional: "easy" (the default), "medium" or "hard"
       "mode": "find_inputs",      the player picks the inputs (only mode so far)
       "num_qubits": 3,            how many wires (qubit 0 is the top wire)
       "gates": [                  gates in time order, left to right
@@ -133,6 +141,9 @@ GATES_WITH_ONE_CONTROL = {"CNOT"}
 GATES_WITH_TWO_CONTROLS = {"CCNOT"}
 ALL_GATES = GATES_WITHOUT_CONTROLS | GATES_WITH_ONE_CONTROL | GATES_WITH_TWO_CONTROLS
 
+# The difficulties, easiest first (must match DIFFICULTIES in game.html)
+DIFFICULTIES = ("easy", "medium", "hard")
+
 # The settings a hint can have (a typo like "pulse_on_fial" is reported)
 HINT_SETTINGS = {"text", "pulse_on_start", "pulse_on_fail"}
 
@@ -157,7 +168,16 @@ def find_problems(puzzle):
         """True if q is a valid wire number for this puzzle."""
         return isinstance(q, int) and 0 <= q < n
 
-    # 2. There must be exactly one goal per wire, and each must be 0, 1 or "S"
+    # 2. The difficulty (optional) must be easy, medium or hard. Capitals are
+    #    fine: "Hard" is tidied into "hard" for the game.
+    if "difficulty" in puzzle:
+        difficulty = str(puzzle["difficulty"]).strip().lower()
+        if difficulty in DIFFICULTIES:
+            puzzle["difficulty"] = difficulty
+        else:
+            problems.append(f'"difficulty" should be one of {list(DIFFICULTIES)}')
+
+    # 2b. There must be exactly one goal per wire, and each must be 0, 1 or "S"
     if len(puzzle["outputs"]) != n:
         problems.append(f'"outputs" has {len(puzzle["outputs"])} values but there are {n} qubits')
     for value in puzzle["outputs"]:
@@ -232,8 +252,25 @@ def load_settings():
         settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         return None, f"{SETTINGS_FILE.name} is not valid JSON: {error}"
-    if not str(settings.get("password", "")).strip():
-        return None, f'{SETTINGS_FILE.name} needs a "password"'
+    # An older file with a single "password" still works: it becomes "easy"
+    if "passwords" not in settings and "password" in settings:
+        settings["passwords"] = {"easy": settings.pop("password")}
+
+    passwords = settings.get("passwords")
+    if not isinstance(passwords, dict) or not passwords:
+        return None, f'{SETTINGS_FILE.name} needs "passwords", e.g. {{"easy": "qubit"}}'
+    for difficulty, password in passwords.items():
+        if difficulty not in DIFFICULTIES:
+            return None, f'unknown difficulty "{difficulty}" in "passwords", use {list(DIFFICULTIES)}'
+        if not str(password).strip():
+            return None, f'the "{difficulty}" password is empty'
+
+    # Two difficulties can't share a password, or the game couldn't tell
+    # which one was meant (capitals and spaces don't count as different)
+    tidied = [str(p).strip().lower() for p in passwords.values()]
+    if len(set(tidied)) != len(tidied):
+        return None, "two difficulties have the same password"
+
     # Fill in the optional settings so the game can rely on them existing
     settings.setdefault("password_hint", "")
     settings.setdefault("final_code", "")
@@ -288,7 +325,7 @@ iframe {{
 # ---------------------------------------------------------------------------
 # The app itself
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="Quantum Computer", page_icon="🧩", layout="wide")
+st.set_page_config(page_title="Qbit Quest", page_icon="🧩", layout="wide")
 st.markdown(PAGE_CSS, unsafe_allow_html=True)
 
 puzzles, broken = load_puzzles()
@@ -297,6 +334,16 @@ settings, settings_problem = load_settings()
 if settings_problem:
     st.error(settings_problem)
     st.stop()
+
+# Warn if a difficulty has a password but nothing to play (for example a
+# "medium" password when every puzzle is "hard")
+for difficulty in settings["passwords"]:
+    rank = DIFFICULTIES.index(difficulty)
+    playable = [p for p in puzzles if DIFFICULTIES.index(p.get("difficulty", "easy")) <= rank]
+    if not playable:
+        easier = "" if difficulty == "easy" else " (or an easier one)"
+        st.error(f'The "{difficulty}" password has no puzzles to play: give at least one '
+                 f'puzzle "difficulty": "{difficulty}"{easier}.')
 
 # Tell the puzzle author about any broken files (players never see this
 # unless a file is broken, and the good puzzles still load)

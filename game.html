@@ -153,7 +153,16 @@
     display: flex; flex-direction: column; gap: 8px;     /* two lines, one above the other */
     padding: 10px 18px; font-family: var(--pixel-font); font-size: 13px;
   }
-  #counter-row { display: flex; align-items: center; gap: 16px; }   /* line 1: counter + progress bars */
+  #counter-row { display: flex; align-items: center; gap: 16px; }   /* line 1: counter, difficulty, progress bars */
+
+  /* Difficulty badge: green easy, amber medium, pink hard */
+  .difficulty-badge {
+    font-family: var(--pixel-font); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 5px 8px; border-radius: 6px; border: 2px solid currentColor;
+  }
+  .difficulty-badge.easy { color: var(--win); }
+  .difficulty-badge.medium { color: #ffc24d; }
+  .difficulty-badge.hard { color: var(--pink); text-shadow: 0 0 8px var(--pink); }
   #timer { font-size: 11px; color: var(--muted); }                   /* line 2: the timer */
   #counter { white-space: nowrap; }
   #counter-current { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
@@ -250,7 +259,7 @@
   /* ================= Victory screen ================= */
   .victory-centre {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 18px; padding: 20px; text-align: center;
+    gap: 12px; padding: 12px 20px; text-align: center;
   }
   .victory-title {
     font-family: var(--pixel-font); font-size: clamp(22px, 4.5vw, 46px); color: #fff;
@@ -312,6 +321,7 @@
     <div id="top-bar">
       <div id="counter-row">
         <div id="counter">Puzzle <span id="counter-current">1</span> / <span id="counter-total">1</span></div>
+        <div class="difficulty-badge" id="difficulty-badge"></div>
         <div id="progress"></div>
       </div>
       <div id="timer">00:00</div>
@@ -332,6 +342,7 @@
     <div class="victory-centre">
       <div class="victory-title">Congratulations!</div>
       <div class="victory-subtitle">You have beaten<br>the escape room</div>
+      <div class="difficulty-badge" id="victory-difficulty"></div>
       <div id="escape-time"></div>
       <div id="final-code-area">Your code<span id="final-code"></span></div>
       <button id="play-again">Play again</button>
@@ -348,11 +359,24 @@
 // the settings from escape_room.json. The defaults are only used if you
 // open this file directly in a browser for testing.
 // =====================================================================
-const PUZZLES = /*PUZZLES*/[];
+const ALL_PUZZLES = /*PUZZLES*/[];   // every puzzle, easiest level first
 const ROOM = Object.assign(
-  { password: "qubit", password_hint: "", final_code: "" },
+  { passwords: { easy: "qubit" }, password_hint: "", final_code: "" },
   /*SETTINGS*/{}
 );
+
+// The difficulties, easiest first. Each password unlocks one of them.
+// A difficulty includes its own puzzles AND all puzzles from easier ones,
+// so "hard" plays every puzzle. A puzzle with no "difficulty" counts as easy.
+const DIFFICULTIES = ["easy", "medium", "hard"];
+
+function puzzlesFor(difficulty) {
+  const rank = DIFFICULTIES.indexOf(difficulty);
+  return ALL_PUZZLES.filter(p => DIFFICULTIES.indexOf(p.difficulty || "easy") <= rank);
+}
+
+// The puzzles for the difficulty being played (filled in at login)
+let PUZZLES = [];
 
 
 // =====================================================================
@@ -817,8 +841,8 @@ function flashScreen(result) {
 // =====================================================================
 const SAVE_KEY = "qbit-quest-progress";
 
-// progress = { loggedIn, puzzle (index of the current puzzle), startedAt, finishedAt }
-let progress = { loggedIn: false, puzzle: 0, startedAt: null, finishedAt: null };
+// progress = { loggedIn, difficulty, puzzle (index of the current puzzle), startedAt, finishedAt }
+let progress = { loggedIn: false, difficulty: null, puzzle: 0, startedAt: null, finishedAt: null };
 
 function saveProgress() {
   try { sessionStorage.setItem(SAVE_KEY, JSON.stringify(progress)); } catch { /* storage blocked: game still works */ }
@@ -833,7 +857,7 @@ function loadProgress() {
 
 function forgetProgress() {
   try { sessionStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
-  progress = { loggedIn: false, puzzle: 0, startedAt: null, finishedAt: null };
+  progress = { loggedIn: false, difficulty: null, puzzle: 0, startedAt: null, finishedAt: null };
 }
 
 // Turn a number of milliseconds into "mm:ss" (or "h:mm:ss")
@@ -882,20 +906,35 @@ function showLogin() {
   login.input.focus();
 }
 
-// Check the password: ignores capital letters and spaces at either end
-function tryPassword() {
-  const typed = login.input.value.trim().toLowerCase();
-  const correct = String(ROOM.password).trim().toLowerCase();
-  if (!typed) return;
+// Passwords are compared ignoring capital letters and spaces at either end
+const tidy = text => String(text).trim().toLowerCase();
 
-  if (typed === correct) {
+// Which difficulty a typed password unlocks, or null if it matches none
+function difficultyForPassword(typed) {
+  return DIFFICULTIES.find(d => ROOM.passwords[d] && tidy(ROOM.passwords[d]) === tidy(typed)) || null;
+}
+
+function tryPassword() {
+  const typed = login.input.value;
+  if (!tidy(typed)) return;
+  const difficulty = difficultyForPassword(typed);
+
+  if (difficulty && puzzlesFor(difficulty).length === 0) {
+    // A password exists but no puzzles are set to this difficulty or easier
+    login.message.className = "error";
+    login.message.textContent = "No puzzles at this level yet.";
+    return;
+  }
+
+  if (difficulty) {
     // Right password: say welcome, then start the first puzzle
     login.input.disabled = true;
     login.button.disabled = true;
     login.message.className = "welcome";
     login.message.textContent = "Welcome, agent...";
     setTimeout(() => {
-      progress = { loggedIn: true, puzzle: 0, startedAt: Date.now(), finishedAt: null };
+      progress = { loggedIn: true, difficulty, puzzle: 0, startedAt: Date.now(), finishedAt: null };
+      PUZZLES = puzzlesFor(difficulty);
       saveProgress();
       startPuzzle(0);
     }, TIMING.welcome);
@@ -946,8 +985,15 @@ function startPuzzle(index) {
   replay(banner, "show");
 }
 
+// Show which difficulty is being played on a badge element
+function showDifficulty(badge) {
+  badge.textContent = progress.difficulty;
+  badge.className = `difficulty-badge ${progress.difficulty}`;
+}
+
 // "Puzzle 2 / 4" in the corner, plus one progress bar per puzzle
 function updateCounter(index) {
+  showDifficulty(document.getElementById("difficulty-badge"));
   document.getElementById("counter-current").textContent = index + 1;
   document.getElementById("counter-total").textContent = PUZZLES.length;
   const bars = document.getElementById("progress");
@@ -1117,6 +1163,8 @@ function showVictory() {
   document.getElementById("escape-time").textContent =
     `Escaped in ${formatTime(progress.finishedAt - progress.startedAt)}`;
 
+  showDifficulty(document.getElementById("victory-difficulty"));
+
   // The final code (for example for a padlock), if one is set
   const codeArea = document.getElementById("final-code-area");
   codeArea.style.display = ROOM.final_code ? "flex" : "none";
@@ -1280,9 +1328,13 @@ updateClock();
 setInterval(updateClock, 10_000);
 setInterval(updateTimer, 500);
 
-// Carry on where this tab left off, or start at the login screen
+// Carry on where this tab left off, or start at the login screen.
+// (A saved game whose difficulty no longer has any puzzles starts afresh.)
 loadProgress();
-if (!progress.loggedIn) {
+if (progress.loggedIn) PUZZLES = puzzlesFor(progress.difficulty);
+
+if (!progress.loggedIn || PUZZLES.length === 0) {
+  forgetProgress();
   showLogin();
 } else if (progress.finishedAt || progress.puzzle >= PUZZLES.length) {
   progress.finishedAt = progress.finishedAt || Date.now();

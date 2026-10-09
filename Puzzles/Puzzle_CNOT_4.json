@@ -8,7 +8,7 @@
     {"type": "CNOT", "target": 1, "control":  2},
     {"type": "CNOT", "target": 0, "control":  1}
   ],
-  "outputs": [1, 0, 0],
+  "outputs": [0, 1, 0],
   "hint": {
     "text": "Try working your way to the solution from the bottom first",
     "pulse_on_start": false,

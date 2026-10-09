@@ -463,6 +463,7 @@ const COLOUR = {
   emptyWire: "rgba(255, 255, 255, 0.13)",   // wire with no signal yet
   idleArrow: "#ffb35c",                     // control arrow before it fires
   xGate: "#ffd23f",                         // yellow triangle
+  inactiveGate: "#6b6f86",                  // grey triangle: its control got a 0, so it didn't flip
   control: "#3a4fc4",                       // blue octagon
   gemFill: "#fcee3c",                       // Superflippy gem
   gemEdge: "#ff3b3b",
@@ -822,6 +823,7 @@ async function sendSignal(puzzle, j, q, signal) {
 // Light up gate k: each part glows with the signal arriving on its own wire.
 // Control arrows take on the control's signal: white = the flip happens,
 // black = nothing happens, stripes = it both does and doesn't!
+// If any control gets a 0, the triangle turns grey to show it was switched off.
 function lightUpGate(puzzle, k, signals) {
   const parts = game.board.gateParts[k];
   for (const control of parts.controls) {
@@ -830,6 +832,8 @@ function lightUpGate(puzzle, k, signals) {
     control.line.setAttribute("stroke", paint(signal));
     control.head.setAttribute("fill", paint(signal));
   }
+  const switchedOff = parts.controls.some(control => signals[control.wire] === 0);
+  if (switchedOff) parts.target.setAttribute("fill", COLOUR.inactiveGate);
   parts.target.setAttribute("filter", glow(signals[puzzle.gates[k].target]));
 }
 
@@ -839,6 +843,7 @@ function clearAnimation() {
   board.signalLayer.innerHTML = "";
   for (const parts of board.gateParts) {
     parts.target.removeAttribute("filter");
+    if (parts.controls.length) parts.target.setAttribute("fill", COLOUR.xGate);   // grey triangles back to yellow
     for (const control of parts.controls) {
       control.shape.removeAttribute("filter");
       control.line.setAttribute("stroke", COLOUR.idleArrow);

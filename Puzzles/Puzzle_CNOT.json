@@ -10,5 +10,8 @@
     "text": "The octagon is an activation gate! Imagine it powering on the flippy gate. If the activation gate receives a white signal, the flippy gate works. If the activation gate receives a black signal, the flippy gate does not change the signal. The activation gate only reads the signal and does not modify it. The flippy gate does not have to be on to complete the puzzle!",
     "pulse_on_start": true,
     "pulse_on_fail": true
-  }
+  },
+  "popups": [
+    {"text": "The octagon is an activation gate! Imagine it powering on the flippy gate. If the activation gate receives a white signal, the flippy gate works. If the activation gate receives a black signal, the flippy gate does not change the signal. The activation gate only reads the signal and does not modify it. The flippy gate does not have to be on to complete the puzzle!", "on_start":  true}
+  ]
 }

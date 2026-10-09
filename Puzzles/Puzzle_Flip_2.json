@@ -10,5 +10,6 @@
     "text": "The triangle is a flippy gate! It turns a black signal white and a white signal black!",
     "pulse_on_start": false,
     "pulse_on_fail": true
-  }
+  },
+  "popups": []
 }

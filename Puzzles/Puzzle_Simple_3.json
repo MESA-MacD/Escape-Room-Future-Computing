@@ -10,5 +10,6 @@
     "text": "Match the colour of the inputs (left) to the outputs (right). Click on the '?' square!",
     "pulse_on_start": false,
     "pulse_on_fail": true
-  }
+  },
+  "popups": []
 }

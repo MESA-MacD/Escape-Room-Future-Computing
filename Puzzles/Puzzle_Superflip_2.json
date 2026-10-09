@@ -13,5 +13,6 @@
     "text": "First ignore the superflip and figure out how to get the top section working.",
     "pulse_on_start": false,
     "pulse_on_fail": true
-  }
+  },
+  "popups": []
 }

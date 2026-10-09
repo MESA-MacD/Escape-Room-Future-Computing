@@ -10,5 +10,6 @@
     "text": "Click the square again to make it white.",
     "pulse_on_start": false,
     "pulse_on_fail": true
-  }
+  },
+  "popups": []
 }

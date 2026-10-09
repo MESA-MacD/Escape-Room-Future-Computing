@@ -267,6 +267,39 @@
   }
   @keyframes pop-up { from { opacity: 0; transform: translateY(8px); } }
 
+  /* POP-UP MESSAGES: a card in the middle of the screen, over a dimmed
+     background, that the player closes with "Got it". Set per puzzle in
+     its JSON file with "popups". */
+  #popup-backdrop {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(8, 10, 24, 0.72); backdrop-filter: blur(3px);
+    animation: fade-in 0.25s ease;
+  }
+  #popup-backdrop[hidden] { display: none; }   /* needed because of display: flex above */
+  #popup {
+    max-width: min(520px, 82vw); max-height: 85%; overflow: auto;
+    display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 2vh, 16px);
+    padding: clamp(16px, 3vh, 28px) clamp(18px, 3vw, 32px); text-align: center;
+    background: var(--panel); border: 2px solid var(--pink); border-radius: 16px;
+    box-shadow: 0 0 30px rgba(255, 79, 216, 0.45);
+    animation: popup-in 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);   /* springy pop */
+  }
+  @keyframes popup-in { from { opacity: 0; transform: scale(0.85); } }
+  #popup-icon {
+    width: 40px; height: 40px; flex: none; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--pixel-font); font-size: 16px; color: var(--pink);
+    border: 3px solid var(--pink); text-shadow: 0 0 8px var(--pink); box-shadow: 0 0 12px rgba(255, 79, 216, 0.5);
+  }
+  #popup-text { font-size: clamp(20px, min(3vw, 6vh), 30px); line-height: 1.2; }
+  #popup-ok {
+    padding: 10px 26px; border-radius: 12px; color: #fff;
+    font-family: "Chakra Petch", "Arial Black", sans-serif; font-weight: 700;
+    font-size: clamp(14px, 1.8vw, 20px); letter-spacing: 0.08em; text-transform: uppercase;
+    background: linear-gradient(180deg, #ff6fde, #e0129c); box-shadow: 0 0 16px var(--pink);
+  }
+
   /* "Puzzle 2 / 4" flashes up when a puzzle starts */
   #banner {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -310,7 +343,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .screen.active, #confirm.ready, .shake, #game.screen-shake,
-    .input-box.unknown rect, .input-box.unknown text, #hint-panel { animation: none; }
+    .input-box.unknown rect, .input-box.unknown text, #hint-panel,
+    #popup-backdrop, #popup { animation: none; }
     /* hint attention mode without movement: just stay bright */
     #hint-button.attention { animation: none; opacity: 1; box-shadow: 0 0 22px var(--cyan); }
   }
@@ -364,6 +398,13 @@
       <button id="hint-button" aria-label="Show hint" aria-expanded="false" hidden>?</button>
     </div>
     <div id="hint-panel" role="dialog" aria-label="Hint" hidden></div>
+    <div id="popup-backdrop" hidden>
+      <div id="popup" role="dialog" aria-modal="true" aria-labelledby="popup-text">
+        <div id="popup-icon" aria-hidden="true">!</div>
+        <div id="popup-text"></div>
+        <button id="popup-ok">Got it</button>
+      </div>
+    </div>
     <div id="banner"></div>
   </section>
 
@@ -1017,6 +1058,7 @@ function startPuzzle(index) {
   updateCounter(index);
   updateConfirmButton();
   setUpHint(puzzle);
+  setUpPopups(puzzle);
 
   // Flash "Puzzle 2 / 4" across the screen
   const banner = document.getElementById("banner");
@@ -1103,6 +1145,7 @@ async function runCircuit() {
     // Flash red and shake, then let them change the inputs and try again
     flashScreen("lose");
     if (hintOf(puzzle)?.pulse_on_fail) drawAttentionToHint();
+    popupsAfterWrongAnswer(puzzle);
     game.busy = false;
     updateConfirmButton();
   }
@@ -1195,10 +1238,112 @@ document.addEventListener("click", event => {
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeHint(); });
 
 
+// --- Pop-up messages -------------------------------------------------
+// In a puzzle's JSON file, "popups" is a list of messages. Each one has
+// its text and ONE rule for when it appears (each message appears once):
+//     "popups": [
+//       {"text": "Meet the Superflippy gem!", "on_start": true},      <- when the puzzle starts
+//       {"text": "Work backwards from the goals.", "after_fails": 2}, <- after the 2nd wrong answer
+//       {"text": "Try the hint button!", "after_seconds": 60}         <- 60 seconds into the puzzle
+//     ]
+// A single message can also be written without the [ ] list brackets.
+// If two are due at once, they show one after the other.
+const popup = {
+  backdrop: document.getElementById("popup-backdrop"),
+  text: document.getElementById("popup-text"),
+  ok: document.getElementById("popup-ok"),
+  queue: [],        // messages waiting to be shown
+  timers: [],       // timed messages for the current puzzle
+  wrongAnswers: 0,  // how many times this puzzle has been answered wrongly
+  puzzleNumber: 0,  // changes with every puzzle, so old timers can tell they're out of date
+  waiting: false,   // true while waiting for an animation to finish before showing
+};
+
+// Wait this long before "on_start" messages, so the "Puzzle 2 / 4" banner goes first
+const POPUP_AFTER_BANNER = 1700;
+// Wait this long after a wrong answer, so the red flash plays first
+const POPUP_AFTER_WRONG = 700;
+
+// Read a puzzle's pop-ups as a list (empty if it has none)
+function popupsOf(puzzle) {
+  const popups = puzzle.popups;
+  if (!popups) return [];
+  return Array.isArray(popups) ? popups : [popups];
+}
+
+// Forget all pop-ups from the previous puzzle
+function clearPopups() {
+  popup.timers.forEach(clearTimeout);
+  popup.timers = [];
+  popup.queue = [];
+  popup.wrongAnswers = 0;
+  popup.puzzleNumber++;
+  popup.backdrop.hidden = true;
+}
+
+// Called when each puzzle starts: schedule its "on_start" and "after_seconds" messages
+function setUpPopups(puzzle) {
+  clearPopups();
+  const thisPuzzle = popup.puzzleNumber;
+  for (const message of popupsOf(puzzle)) {
+    const delay = message.on_start ? POPUP_AFTER_BANNER
+                : message.after_seconds ? message.after_seconds * 1000
+                : null;
+    if (delay !== null) popup.timers.push(setTimeout(() => queuePopup(message, thisPuzzle), delay));
+  }
+}
+
+// Called after every wrong answer: show any "after_fails" message whose number has come up
+function popupsAfterWrongAnswer(puzzle) {
+  popup.wrongAnswers++;
+  const thisPuzzle = popup.puzzleNumber;
+  for (const message of popupsOf(puzzle)) {
+    if (message.after_fails === popup.wrongAnswers) {
+      setTimeout(() => queuePopup(message, thisPuzzle), POPUP_AFTER_WRONG);
+    }
+  }
+}
+
+// Add a message to the queue, unless its puzzle has already been solved
+function queuePopup(message, puzzleNumber) {
+  if (puzzleNumber !== popup.puzzleNumber) return;
+  popup.queue.push(message);
+  showNextPopup();
+}
+
+// Show the next waiting message, one at a time, never mid-animation
+function showNextPopup() {
+  if (!popup.backdrop.hidden || popup.queue.length === 0) return;
+  if (game.busy) {
+    // Signals are still moving: try again shortly
+    if (!popup.waiting) {
+      popup.waiting = true;
+      setTimeout(() => { popup.waiting = false; showNextPopup(); }, 300);
+    }
+    return;
+  }
+  closeHint();
+  popup.text.textContent = popup.queue.shift().text;
+  popup.backdrop.hidden = false;
+  popup.ok.focus({ focusVisible: false });   // ready for Enter, without drawing a focus ring
+}
+
+function closePopup() {
+  popup.backdrop.hidden = true;
+  showNextPopup();   // if another message is waiting, it's next
+}
+
+popup.ok.addEventListener("click", closePopup);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !popup.backdrop.hidden) closePopup();
+});
+
+
 // =====================================================================
 // 9. VICTORY SCREEN
 // =====================================================================
 function showVictory() {
+  clearPopups();
   showScreen("victory");
   document.getElementById("escape-time").textContent =
     `Escaped in ${formatTime(progress.finishedAt - progress.startedAt)}`;

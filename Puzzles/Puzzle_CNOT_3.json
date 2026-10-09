@@ -13,5 +13,6 @@
     "text": "Start with the first gate. One you know the signals after the first gate you can find out how the second gate changes things.",
     "pulse_on_start": false,
     "pulse_on_fail": true
-  }
+  },
+  "popups": []
 }

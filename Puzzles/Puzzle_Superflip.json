@@ -12,5 +12,8 @@
     "text": "The diamond is an superflip gate! It creates a signal that is both black AND white at the same time. This is only possible in quantum computers!",
     "pulse_on_start": true,
     "pulse_on_fail": true
-  }
+  },
+  "popups": [
+    {"text": "The diamond is an superflip gate! It creates a signal that is both black AND white at the same time. This is only possible in quantum computers!", "on_start": true}
+  ]
 }

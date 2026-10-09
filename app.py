@@ -61,6 +61,15 @@ WRITING A PUZZLE FILE
     Leave "hint" out completely and the hint button is hidden for that puzzle.
     The blinking stops as soon as the player opens the hint.
 
+    POP-UP MESSAGES (optional): messages that appear by themselves in the
+    middle of the screen, and stay until the player taps "Got it". Each one
+    has its text and ONE rule for when it appears, and appears only once:
+      "popups": [
+        {"text": "Meet the Superflippy gem!", "on_start": true},       when the puzzle starts
+        {"text": "Work backwards from the goals.", "after_fails": 2},  after the 2nd wrong answer
+        {"text": "Try the hint button!", "after_seconds": 60}          60 seconds into the puzzle
+      ]
+
     Signals:  1 = white,  0 = black,  "S" = superposition (half white, half black)
 
     Gate types:
@@ -147,6 +156,9 @@ DIFFICULTIES = ("easy", "medium", "hard")
 # The settings a hint can have (a typo like "pulse_on_fial" is reported)
 HINT_SETTINGS = {"text", "pulse_on_start", "pulse_on_fail"}
 
+# The rules for when a pop-up message appears (each message needs exactly one)
+POPUP_TRIGGERS = {"on_start", "after_fails", "after_seconds"}
+
 
 # ---------------------------------------------------------------------------
 # Checking puzzle files for mistakes
@@ -197,6 +209,17 @@ def find_problems(puzzle):
     elif hint is not None and not isinstance(hint, str):
         problems.append('"hint" should be text, or {"text": ..., "pulse_on_start": ..., "pulse_on_fail": ...}')
 
+    # 3b. Pop-up messages (optional): one message, or a list of them
+    popups = puzzle.get("popups")
+    if popups is not None:
+        if isinstance(popups, dict):
+            popups = [popups]
+        if not isinstance(popups, list):
+            problems.append('"popups" should be a list of messages, e.g. [{"text": "...", "on_start": true}]')
+            popups = []
+        for number, message in enumerate(popups, start=1):
+            problems += popup_problems(message, number)
+
     # 4. Every gate must be a known type, on real wires, with the right controls
     for number, gate in enumerate(puzzle["gates"], start=1):
         kind = gate.get("type")
@@ -222,6 +245,37 @@ def find_problems(puzzle):
         elif len(set(wires)) != len(wires):
             problems.append(f"{where}: a gate can't use the same wire twice")
 
+    return problems
+
+
+def popup_problems(message, number):
+    """Problems with one pop-up message (an empty list = it's fine)."""
+    where = f"popup {number}"
+    if not isinstance(message, dict):
+        return [f'{where} should look like {{"text": "...", "on_start": true}}']
+    problems = []
+    if not str(message.get("text", "")).strip():
+        problems.append(f'{where} needs some "text"')
+    for key in message:
+        if key != "text" and key not in POPUP_TRIGGERS:
+            problems.append(f'{where}: unknown setting "{key}", use "text" plus one of {sorted(POPUP_TRIGGERS)}')
+
+    # Exactly one rule for when it appears, with a sensible value
+    triggers = [key for key in POPUP_TRIGGERS if key in message]
+    if len(triggers) != 1:
+        problems.append(f"{where} needs exactly one of {sorted(POPUP_TRIGGERS)}")
+    elif "on_start" in message and message["on_start"] is not True:
+        problems.append(f'{where}: "on_start" should be true')
+    elif "after_fails" in message and not (
+        isinstance(message["after_fails"], int) and not isinstance(message["after_fails"], bool)
+        and message["after_fails"] >= 1
+    ):
+        problems.append(f'{where}: "after_fails" should be a whole number, 1 or more')
+    elif "after_seconds" in message and not (
+        isinstance(message["after_seconds"], (int, float)) and not isinstance(message["after_seconds"], bool)
+        and message["after_seconds"] > 0
+    ):
+        problems.append(f'{where}: "after_seconds" should be a number of seconds, more than 0')
     return problems
 
 

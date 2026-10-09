@@ -128,7 +128,11 @@
     box-shadow: 0 0 24px rgba(255, 79, 216, 0.45), 0 0 24px rgba(63, 243, 255, 0.35);
   }
   .avatar svg { width: 100%; height: 100%; display: block; border-radius: 50%; background: var(--panel); }
-  .user-name { font-family: var(--pixel-font); font-size: 18px; text-shadow: 0 0 10px var(--cyan); }
+  .user-name {
+    font-family: var(--pixel-font); text-shadow: 0 0 10px var(--cyan);
+    font-size: clamp(11px, 2.1vw, 18px);   /* shrinks on small screens so the line fits */
+    text-align: center; padding: 0 16px;
+  }
   .password-row { display: flex; gap: 8px; }
   #password {
     width: min(260px, 50vw); padding: 8px 14px;
@@ -823,7 +827,7 @@ async function sendSignal(puzzle, j, q, signal) {
 // Light up gate k: each part glows with the signal arriving on its own wire.
 // Control arrows take on the control's signal: white = the flip happens,
 // black = nothing happens, stripes = it both does and doesn't!
-// If any control gets a 0, the triangle turns grey to show it was switched off.
+// If any control gets a 0, the triangle turns grey with no glow, to show it was switched off.
 function lightUpGate(puzzle, k, signals) {
   const parts = game.board.gateParts[k];
   for (const control of parts.controls) {
@@ -833,8 +837,12 @@ function lightUpGate(puzzle, k, signals) {
     control.head.setAttribute("fill", paint(signal));
   }
   const switchedOff = parts.controls.some(control => signals[control.wire] === 0);
-  if (switchedOff) parts.target.setAttribute("fill", COLOUR.inactiveGate);
-  parts.target.setAttribute("filter", glow(signals[puzzle.gates[k].target]));
+  if (switchedOff) {
+    // Switched off: grey triangle, and no glow
+    parts.target.setAttribute("fill", COLOUR.inactiveGate);
+  } else {
+    parts.target.setAttribute("filter", glow(signals[puzzle.gates[k].target]));
+  }
 }
 
 // Put the board back as it was before Confirm was pressed

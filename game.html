@@ -27,10 +27,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Two retro computer fonts: a chunky pixel font for headings and buttons,
-     and a terminal font that stays readable for smaller text -->
+<!-- Fonts: a chunky pixel font for headings, a terminal font that stays
+     readable for smaller text, and a bold techy font for the Confirm button -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Chakra+Petch:wght@700&display=swap" rel="stylesheet">
 <style>
   /* ================= Colours and fonts used everywhere ================= */
   :root {
@@ -166,8 +166,18 @@
   #timer { font-size: 11px; color: var(--muted); }                   /* line 2: the timer */
   #counter { white-space: nowrap; }
   #counter-current { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
-  #progress { display: flex; gap: 6px; flex: 1; }     /* one bar per puzzle */
-  .progress-step { width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); }
+  /* One bar per puzzle. Bars are 22px wide when there's room, and shrink
+     (down to 3px) to fit when there are lots of puzzles or a narrow screen.
+     The gap between them shrinks too: --steps is the number of puzzles,
+     set by the script. */
+  #progress {
+    display: flex; flex: 1; min-width: 0;
+    gap: clamp(1px, calc(120px / var(--steps, 4)), 6px);
+  }
+  .progress-step {
+    flex: 0 1 22px; min-width: 3px; height: 6px;
+    border-radius: 3px; background: rgba(255, 255, 255, 0.18);
+  }
   .progress-step.done { background: var(--win); box-shadow: 0 0 6px var(--win); }
   .progress-step.current { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
   /* Circuit on the left, big Confirm button on the right */
@@ -178,7 +188,9 @@
   /* THE CONFIRM BUTTON: big, bright, and pulsing when it's ready to press */
   #confirm {
     flex: none; width: clamp(130px, 20vw, 230px); height: clamp(90px, 42%, 170px);
-    border-radius: 20px; font-family: var(--pixel-font); font-size: clamp(13px, 1.9vw, 22px); color: #fff;
+    border-radius: 20px; color: #fff;
+    font-family: "Chakra Petch", "Arial Black", sans-serif; font-weight: 700;  /* easy to read */
+    font-size: clamp(18px, 2.8vw, 32px); letter-spacing: 0.08em; text-transform: uppercase;
     background: linear-gradient(180deg, #ff6fde, #e0129c);
     box-shadow: 0 0 28px var(--pink), inset 0 -8px 0 rgba(0, 0, 0, 0.25);
     transition: transform 0.1s;
@@ -207,15 +219,21 @@
   @keyframes bob { 50% { transform: translateY(-6px); } }
 
   /* Bottom bar: hint button on the left */
+  /* Size of the hint button. Bigger on computers (see the media query below) */
+  :root { --hint-size: 44px; }
+  @media (hover: hover) and (pointer: fine) and (min-width: 900px) {   /* mouse + wide screen = a computer */
+    :root { --hint-size: 64px; }
+  }
+
   #bottom-bar {
-    display: flex; align-items: center; min-height: 52px;
+    display: flex; align-items: center; min-height: calc(var(--hint-size) + 8px);
     padding: 4px 18px 10px; font-family: var(--pixel-font); font-size: 13px;
   }
 
   /* HINT BUTTON: a circled question mark */
   #hint-button {
-    width: 44px; height: 44px; padding: 0 0 0 3px; border-radius: 50%;
-    font-family: var(--pixel-font); font-size: 18px; color: var(--cyan);
+    width: var(--hint-size); height: var(--hint-size); padding: 0 0 0 3px; border-radius: 50%;
+    font-family: var(--pixel-font); font-size: calc(var(--hint-size) * 0.4); color: var(--cyan);
     background: rgba(63, 243, 255, 0.08); border: 3px solid var(--cyan);
     box-shadow: 0 0 10px rgba(63, 243, 255, 0.4); text-shadow: 0 0 8px var(--cyan);
     opacity: 0.75; transition: opacity 0.2s, transform 0.1s;
@@ -231,7 +249,7 @@
 
   /* HINT BUBBLE: pops up above the hint button */
   #hint-panel {
-    position: fixed; left: 18px; bottom: 72px; z-index: 15;
+    position: fixed; left: 18px; bottom: calc(var(--hint-size) + 28px); z-index: 15;   /* just above the button */
     max-width: min(440px, 70vw); padding: 12px 18px;
     font-size: 24px; line-height: 1.2;
     background: var(--panel); border: 2px solid var(--cyan); border-radius: 12px;
@@ -256,27 +274,35 @@
   #banner.show { animation: banner 1.6s ease forwards; }
   @keyframes banner { 0% { opacity: 0; } 15%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
-  /* ================= Victory screen ================= */
+  /* ================= Victory screen =================
+     Every size here scales with the screen. min(…vw, …vh) uses whichever
+     is tighter, the width or the height, so text shrinks on a short phone
+     screen as well as a narrow one. clamp(smallest, ideal, biggest) stops
+     it getting too tiny or too huge. */
   .victory-centre {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 12px; padding: 12px 20px; text-align: center;
+    gap: clamp(4px, 2.2vh, 18px); padding: 2vh 20px; text-align: center;
   }
   .victory-title {
-    font-family: var(--pixel-font); font-size: clamp(22px, 4.5vw, 46px); color: #fff;
+    font-family: var(--pixel-font); font-size: clamp(16px, min(5.5vw, 10vh), 56px); color: #fff;
     text-shadow: 0 0 6px var(--pink), 0 0 22px var(--pink), 0 0 44px var(--pink);
   }
   .victory-subtitle {
-    font-family: var(--pixel-font); font-size: clamp(11px, 1.8vw, 18px); line-height: 1.7;
+    font-family: var(--pixel-font); font-size: clamp(9px, min(2vw, 3.8vh), 22px); line-height: 1.7;
     color: var(--cyan); text-shadow: 0 0 10px var(--cyan);
   }
-  #escape-time { font-size: 28px; }
-  #final-code-area { display: none; flex-direction: column; align-items: center; gap: 6px; font-size: 24px; color: var(--muted); }
+  #escape-time { font-size: clamp(16px, min(3.4vw, 6.5vh), 36px); }
+  #final-code-area {
+    display: none; flex-direction: column; align-items: center; gap: 0.3em;
+    font-size: clamp(14px, min(3vw, 5.5vh), 30px); color: var(--muted);
+  }
   #final-code {
-    font-family: var(--pixel-font); font-size: clamp(24px, 5vw, 48px); letter-spacing: 0.3em;
-    padding: 14px 10px 14px 24px; border: 2px dashed rgba(61, 255, 154, 0.5); border-radius: 10px;
+    font-family: var(--pixel-font); font-size: clamp(18px, min(5.5vw, 10vh), 60px); letter-spacing: 0.3em;
+    padding: 0.3em 0.2em 0.3em 0.5em; border: 2px dashed rgba(61, 255, 154, 0.5); border-radius: 10px;
     color: var(--win); text-shadow: 0 0 14px var(--win);
   }
-  #play-again { background: none; font-size: 22px; color: var(--muted); text-decoration: underline; }
+  #play-again { background: none; font-size: clamp(14px, min(2.6vw, 5vh), 26px); color: var(--muted); text-decoration: underline; }
+  .victory-centre .difficulty-badge { font-size: clamp(8px, min(1.4vw, 2.6vh), 14px); }
 
   @media (prefers-reduced-motion: reduce) {
     .screen.active, #confirm.ready, .shake, #game.screen-shake,
@@ -306,7 +332,7 @@
           <polygon points="38,30 38,70 68,50" fill="#ffd23f"/>
         </svg>
       </div>
-      <div class="user-name">User: ????? Password: 12345</div>
+      <div class="user-name">Username: ????? Password: 12345</div>
       <div class="password-row">
         <input id="password" type="password" placeholder="Password" autocomplete="off" aria-label="Password">
         <button id="login-button" aria-label="Log in">➜</button>
@@ -997,6 +1023,7 @@ function updateCounter(index) {
   document.getElementById("counter-current").textContent = index + 1;
   document.getElementById("counter-total").textContent = PUZZLES.length;
   const bars = document.getElementById("progress");
+  bars.style.setProperty("--steps", PUZZLES.length);   // lets the CSS shrink the gaps to fit
   bars.innerHTML = "";
   PUZZLES.forEach((_, i) => {
     const bar = document.createElement("div");

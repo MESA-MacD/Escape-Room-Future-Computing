@@ -7,7 +7,7 @@
   "gates": [{"type": "CNOT", "target": 0, "control":  1}],
   "outputs": [1, 1],
   "hint": {
-    "text": "The octagon is an activation gate! It needs a white signal to make the triangle work.",
+    "text": "The octagon is an activation gate! Imagine it powering on the flippy gate. If the activation gate receives a white signal, the flippy gate works. If the activation gate receives a black signal, the flippy gate does not work.",
     "pulse_on_start": true,
     "pulse_on_fail": true
   }

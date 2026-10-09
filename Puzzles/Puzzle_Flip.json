@@ -7,11 +7,11 @@
   "gates": [{"type": "X", "target": 0}],
   "outputs": [1],
   "hint": {
-    "text": "The triangle is a flippy gate! It turns a black signal white and a white signal black!",
+    "text": "The triangle is a flip gate! It turns a black signal white and a white signal black!",
     "pulse_on_start": true,
     "pulse_on_fail": true
   },
   "popups": [
-    {"text": "The triangle is a flippy gate! It turns a black signal white and a white signal black!", "on_start": true}
+    {"text": "The triangle is a flip gate! It turns a black signal white and a white signal black!", "on_start": true}
   ]
 }

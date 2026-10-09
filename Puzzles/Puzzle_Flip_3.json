@@ -11,7 +11,7 @@
   ],
   "outputs": [0, 1],
   "hint": {
-    "text": "Two flippy gates in a row brings the signal back to normal.",
+    "text": "Two flip gates in a row brings the signal back to normal.",
     "pulse_on_start": false,
     "pulse_on_fail": true
   },

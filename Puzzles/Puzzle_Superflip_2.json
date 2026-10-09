@@ -10,7 +10,7 @@
   ],
   "outputs": [1, "S"],
   "hint": {
-    "text": "First ignore the superflip and figure out how to get the top section working.",
+    "text": "First, ignore the superflip, then, figure out how to get the top section working.",
     "pulse_on_start": false,
     "pulse_on_fail": true
   },

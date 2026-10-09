@@ -7,7 +7,7 @@
   "gates": [{"type": "CNOT", "target": 0, "control":  1}],
   "outputs": [1, 0],
   "hint": {
-    "text": "The octagon is an activation gate! Imagine it powering on the flippy gate. If the activation gate receives a white signal, the flippy gate works. If the activation gate receives a black signal, the flippy gate does not change the signal. The activation gate only reads the signal and does not modify it. The flippy gate does not have to be on to complete the puzzle!",
+    "text": "The octagon is an activation gate. A white signal switches the flippy gate on, so it flips. A black signal switches it off, so the signal passes through unchanged. The octagon never changes its own signal. Tip: you might not need the flippy gate on to solve this!",
     "pulse_on_start": false,
     "pulse_on_fail": true
   },

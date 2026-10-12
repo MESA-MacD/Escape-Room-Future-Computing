@@ -119,8 +119,29 @@ Each puzzle is one `.json` file in the `Puzzles` folder. To add a puzzle, copy a
 | `gates` | The gates, in order from left to right (see below). |
 | `outputs` | The goal for each wire, top to bottom: `1` (white), `0` (black) or `"S"` (superposition). |
 | `hint` | Optional. Either just the text, `"hint": "Try the bottom wire first."`, or an object with `text` plus the blinking settings below. Leave it out to hide the hint button for that puzzle. |
+| `popups` | Optional. Messages that appear by themselves in the middle of the screen (see below). |
 
 **Hint blinking:** `"pulse_on_start": true` makes the hint button blink from the start of the puzzle, and `"pulse_on_fail": true` makes it blink after a wrong answer. Both are optional and off unless set, and the blinking stops once the hint is opened.
+
+### Pop-up messages
+
+Unlike hints, which players open themselves, pop-up messages appear on their own in the middle of the screen and stay until the player taps **Got it**. They're useful for introducing a new gate, or for nudging a group that's stuck. Each message has its text and **one** rule for when it appears, and each appears once per puzzle:
+
+```json
+"popups": [
+  {"text": "New gate! This gem is the Superflippy.", "on_start": true},
+  {"text": "Try working backwards from the goals.", "after_fails": 2},
+  {"text": "Still stuck? Tap the ? for a hint.", "after_seconds": 60}
+]
+```
+
+| Rule | When the message appears |
+| --- | --- |
+| `"on_start": true` | When the puzzle starts, just after the "Puzzle 2 / 4" banner. |
+| `"after_fails": 2` | After that many wrong answers (here, the second). |
+| `"after_seconds": 60` | That many seconds after the puzzle starts, if it hasn't been solved yet. |
+
+If two messages are due at the same time they appear one after the other, and a message never interrupts the circuit animation.
 
 ### Gates
 
@@ -134,7 +155,7 @@ Each puzzle is one `.json` file in the `Puzzles` folder. To add a puzzle, copy a
 ### Tips
 
 - **You never write the answer.** The app simulates the circuit with the player's inputs and compares the result with `outputs`, so a puzzle can't have a wrong answer, and puzzles with more than one solution just work.
-- **Mistakes are reported on the page.** If a puzzle file has an error (a typo in a gate type, a wire that doesn't exist, an unknown hint setting), the app shows a red message naming the file and the problem, skips that puzzle, and keeps the rest working.
+- **Mistakes are reported on the page.** If a puzzle file has an error (a typo in a gate type, a wire that doesn't exist, an unknown hint or pop-up setting), the app shows a red message naming the file and the problem, skips that puzzle, and keeps the rest working.
 - **Levels with decimals:** write them as numbers, without quotes (`"level": 1.2`, not `"level": "1.2"`). If a theme might have ten or more puzzles, use two decimal places from the start (`1.01`, `1.02`, … `1.10`), because `1.10` is the same number as `1.1`.
 
 ---

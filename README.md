@@ -206,7 +206,7 @@ The live app is hosted on Streamlit Community Cloud and updates itself from this
 
 Small edits, like changing a hint or a password, can also be made directly on GitHub using the pencil icon on any file.
 
-If you add a Python package and are using [uv], regenerate `requirements.txt` before pushing:
+If you add a Python package and are using uv, regenerate `requirements.txt` before pushing:
 
 ```bash
 uv export --format requirements-txt --no-hashes --no-emit-project > requirements.txt
